@@ -172,6 +172,22 @@ class ImapSource(Source):
     def required_vendors(self) -> list[str]:
         return [r.vendor for r in self.rules if r.required]
 
+    def check(self) -> str:
+        """Used by the UI's Test button: log in and open each folder."""
+        conn = self.imap_factory(self.cfg["host"], int(self.cfg.get("port", 993)))
+        try:
+            conn.login(self.cfg["username"], self.cfg["password"])
+            for folder in self.folders:
+                status, data = conn.select(quote(folder), readonly=True)
+                if status != "OK":
+                    raise RuntimeError(f"cannot open folder {folder!r}")
+            return f"logged in, {len(self.folders)} folder(s) readable"
+        finally:
+            try:
+                conn.logout()
+            except Exception:  # noqa: BLE001
+                pass
+
     def collect(self, period: Period) -> list[Invoice]:
         conn = self.imap_factory(self.cfg["host"], int(self.cfg.get("port", 993)))
         session = requests.Session()

@@ -3,6 +3,7 @@ from __future__ import annotations
 import zipfile
 from datetime import date
 from email.message import EmailMessage
+from email.utils import make_msgid
 from email.policy import default as default_policy
 
 import pytest
@@ -20,6 +21,7 @@ def make_mail(sender, subject, when="Tue, 09 Sep 2026 10:00:00 +0000",
               attachment=("invoice.pdf", PDF), html=None) -> EmailMessage:
     msg = EmailMessage(policy=default_policy)
     msg["From"], msg["Subject"], msg["Date"] = sender, subject, when
+    msg["Message-ID"] = make_msgid()
     msg.set_content("Your invoice is ready.")
     if html:
         msg.add_alternative(html, subtype="html")
@@ -142,19 +144,31 @@ def test_save_dedupes_and_names(tmp_path):
 
 def test_delivery_splits_and_routes(tmp_path):
     p = Period(2026, 9)
-    report = bundle.RunReport(p)
-    bundle.save([Invoice(f"V{i}", f"{i}.pdf", PDF + bytes(600_000) + bytes([i]), "s")
-                 for i in range(3)], p, tmp_path, report)
+    files = []
+    for i in range(3):
+        f = tmp_path / f"{i}.pdf"
+        f.write_bytes(PDF + bytes(600_000) + bytes([i]))
+        files.append(f)
     cfg = {"from": "me@x.com", "to": "acc@y.com", "max_attachment_mb": 1, "name": "Me"}
 
-    msgs = deliver.build_messages(report, cfg, to_accountant=True)
+    msgs = deliver.compose(p, files, cfg, True, "file list")
     assert len(msgs) == 3
     assert msgs[0]["To"] == "acc@y.com" and msgs[0]["Cc"] == "me@x.com"
     assert msgs[0]["Subject"] == "Invoices September 2026 - Me (1/3)"
+    assert "invoices for September 2026" in msgs[0].get_body().get_content()
 
-    report.missing = ["Vodafone"]
-    held = deliver.build_messages(report, cfg, to_accountant=False)
+    held = deliver.compose(p, files, cfg, False, "MISSING: Vodafone")
     assert held[0]["To"] == "me@x.com" and "Vodafone" in held[0].get_body().get_content()
+
+
+def test_smtp_settings_borrow_mailbox(monkeypatch):
+    monkeypatch.setenv("GM_PASSWORD", "app-pw")
+    cfg = {"sources": [{"id": "gm", "type": "imap", "host": "imap.gmail.com",
+                        "username": "me@gmail.com", "password": "${GM_PASSWORD}"}],
+           "delivery": {"to": "acc@y.com", "smtp_source": "gm", "method": "smtp"}}
+    s = deliver.smtp_settings(cfg)
+    assert (s["smtp_host"], s["smtp_port"], s["smtp_password"], s["from"]) == \
+        ("smtp.gmail.com", 465, "app-pw", "me@gmail.com")
 
 
 def test_cli_run_reports_missing_and_errors(tmp_path, monkeypatch):
@@ -171,6 +185,7 @@ def test_cli_run_reports_missing_and_errors(tmp_path, monkeypatch):
     )
     code = cli.main(["--config", str(cfg), "run", "--month", "2026-09",
                      "--out", str(tmp_path / "out")])
+    assert (tmp_path / "out" / "invoices-2026-09.zip").exists()
     summary = (tmp_path / "out" / "summary-2026-09.txt").read_text()
     assert code == 1
     assert "Acme" in summary and "- Telco" in summary

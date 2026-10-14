@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-import os
 import re
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+from . import vault
 
 _ENV = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
@@ -15,21 +16,35 @@ class ConfigError(Exception):
 
 
 def load(path: str | Path) -> dict[str, Any]:
-    with open(path, encoding="utf-8") as fh:
-        data = yaml.safe_load(fh) or {}
+    path = Path(path)
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) if path.exists() else {}
+    data = data or {}
     if not isinstance(data, dict):
         raise ConfigError(f"{path}: top level must be a mapping")
-    data.setdefault("sources", [])
+    data["sources"] = data.get("sources") or []
+    data["vendors"] = data.get("vendors") or []
+    data["manual"] = data.get("manual") or []
     return data
 
 
+def save(data: dict[str, Any], path: str | Path) -> None:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8")
+    tmp.replace(path)
+
+
 def resolve(value: Any, where: str = "config") -> Any:
-    """Replace ${VAR} with environment values, recursively. Missing vars are an error."""
+    """Replace ${NAME} with the env var or stored secret, recursively. Missing ones are an error."""
     if isinstance(value, str):
-        missing = [n for n in _ENV.findall(value) if n not in os.environ]
+        names = _ENV.findall(value)
+        found = {n: vault.get(n) for n in names}
+        missing = [n for n, v in found.items() if v is None]
         if missing:
-            raise ConfigError(f"{where}: environment variable(s) not set: {', '.join(missing)}")
-        return _ENV.sub(lambda m: os.environ[m.group(1)], value)
+            raise ConfigError(f"{where}: password/secret not saved yet ({', '.join(missing)}). "
+                              "Edit the connection and paste it again.")
+        return _ENV.sub(lambda m: found[m.group(1)], value)
     if isinstance(value, list):
         return [resolve(v, where) for v in value]
     if isinstance(value, dict):

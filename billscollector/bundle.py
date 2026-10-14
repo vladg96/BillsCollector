@@ -22,6 +22,7 @@ class RunReport:
     missing: list[str] = field(default_factory=list)
     errors: dict[str, str] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
+    required: list[str] = field(default_factory=list)
     duplicates: int = 0
 
     @property

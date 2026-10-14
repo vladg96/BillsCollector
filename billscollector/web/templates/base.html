@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}BillsCollector{% endblock %}</title>
+<style>
+  :root {
+    --bg: #f6f6f4; --card: #ffffff; --text: #1d1d1f; --muted: #6e6e73; --line: #e3e3e0;
+    --accent: #2f5bea; --accent-text: #fff; --ok: #1f8a4c; --ok-bg: #e6f4ec;
+    --warn: #9a6200; --warn-bg: #fdf3dd; --err: #c0362c; --err-bg: #fbe9e7;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161617; --card: #1f1f21; --text: #f2f2f2; --muted: #a1a1a6; --line: #333336;
+      --accent: #6b8cff; --accent-text: #0b0b0c; --ok: #5fd08f; --ok-bg: #16301f;
+      --warn: #f0b84f; --warn-bg: #33280f; --err: #ff7b6e; --err-bg: #3a1714;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  header { background: var(--card); border-bottom: 1px solid var(--line); }
+  .bar { max-width: 960px; margin: 0 auto; padding: 0 16px; display: flex; gap: 20px;
+         align-items: center; height: 56px; overflow-x: auto; }
+  .brand { font-weight: 700; margin-right: 8px; white-space: nowrap; }
+  nav a { color: var(--muted); text-decoration: none; padding: 17px 0; white-space: nowrap;
+          border-bottom: 2px solid transparent; }
+  nav a.on, nav a:hover { color: var(--text); border-bottom-color: var(--accent); }
+  nav { display: flex; gap: 18px; }
+  main { max-width: 960px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 26px; margin: 0 0 4px; } h2 { font-size: 17px; margin: 0 0 12px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+          padding: 18px 20px; margin-bottom: 16px; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .spread { justify-content: space-between; }
+  .btn { display: inline-block; border: 1px solid var(--line); background: var(--card);
+         color: var(--text); border-radius: 8px; padding: 7px 14px; font: inherit;
+         cursor: pointer; text-decoration: none; white-space: nowrap; }
+  .btn:hover { border-color: var(--muted); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+  .btn.small { padding: 3px 10px; font-size: 13px; }
+  .btn.danger { color: var(--err); }
+  form.inline { display: inline; margin: 0; }
+  table { width: 100%; border-collapse: collapse; }
+  td, th { text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  th { color: var(--muted); font-weight: 500; font-size: 13px; }
+  tr:last-child td { border-bottom: 0; }
+  .muted { color: var(--muted); } .small { font-size: 13px; }
+  .pill { display: inline-block; border-radius: 99px; padding: 2px 10px; font-size: 13px; font-weight: 600; }
+  .pill.ok { background: var(--ok-bg); color: var(--ok); }
+  .pill.warn { background: var(--warn-bg); color: var(--warn); }
+  .pill.err { background: var(--err-bg); color: var(--err); }
+  .pill.off { background: var(--line); color: var(--muted); }
+  .flash { border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; }
+  .flash.ok { background: var(--ok-bg); color: var(--ok); }
+  .flash.warn { background: var(--warn-bg); color: var(--warn); }
+  .flash.error { background: var(--err-bg); color: var(--err); }
+  label { display: block; font-weight: 500; margin: 12px 0 4px; }
+  label.check { display: flex; gap: 8px; align-items: center; font-weight: 400; }
+  input[type=text], input[type=email], input[type=password], input[type=number], select, textarea {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px;
+    background: var(--bg); color: var(--text); font: inherit; }
+  textarea { font-family: ui-monospace, Menlo, monospace; font-size: 13px; }
+  .hint { color: var(--muted); font-size: 13px; margin-top: 4px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+  .tile { border: 1px solid var(--line); border-radius: 10px; padding: 14px; text-decoration: none;
+          color: inherit; display: block; }
+  .tile:hover { border-color: var(--accent); }
+  .tile b { display: block; margin-bottom: 4px; }
+  a { color: var(--accent); }
+  input[type=file] { max-width: 100%; font: inherit; font-size: 13px; color: var(--muted); }
+  .need { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between;
+          padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .need:last-of-type { border-bottom: 0; }
+  .need .row { justify-content: flex-end; }
+  code { font-family: ui-monospace, Menlo, monospace; font-size: 13px; }
+  .scroll { overflow-x: auto; }
+</style>
+</head>
+<body>
+<header><div class="bar">
+  <span class="brand">BillsCollector</span>
+  <nav>
+    {% set ep = request.endpoint or '' %}
+    <a href="{{ url_for('home') }}" class="{{ 'on' if ep.startswith('month') }}">Months</a>
+    <a href="{{ url_for('connections') }}" class="{{ 'on' if 'connection' in ep }}">Connections</a>
+    <a href="{{ url_for('vendors') }}" class="{{ 'on' if 'vendor' in ep }}">Vendors</a>
+    <a href="{{ url_for('checklist') }}" class="{{ 'on' if 'checklist' in ep or 'item' in ep }}">Checklist</a>
+    <a href="{{ url_for('settings') }}" class="{{ 'on' if 'settings' in ep }}">Settings</a>
+  </nav>
+</div></header>
+<main>
+  {% for cat, msg in get_flashed_messages(with_categories=true) %}
+    <div class="flash {{ cat }}">{{ msg }}</div>
+  {% endfor %}
+  {% block body %}{% endblock %}
+</main>
+</body>
+</html>

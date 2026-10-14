@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}{{ period.label }} · BillsCollector{% endblock %}
+{% block body %}
+<div class="row spread">
+  <div>
+    <h1>{{ period.label }}</h1>
+    <p class="sub">
+      {% if not run %}<span class="pill off">Not collected yet</span>
+      {% elif complete %}<span class="pill ok">Complete</span>
+      {% else %}<span class="pill warn">{{ missing_vendors|length + missing_items|length + (run.errors|length) }} thing(s) need you</span>{% endif %}
+      {% if run %}<span class="small">&nbsp; last collected {{ run.at.replace('T', ' ') }}</span>{% endif %}
+      {% if m.data.sent %}<span class="small">&nbsp;· sent {{ m.data.sent[-1].at.replace('T', ' ') }} ({{ m.data.sent[-1].method }})</span>{% endif %}
+    </p>
+  </div>
+  <div class="row">
+    <a class="btn" href="{{ url_for('month', ym=prev) }}">&larr; {{ prev }}</a>
+    <a class="btn" href="{{ url_for('month', ym=next) }}">{{ next }} &rarr;</a>
+  </div>
+</div>
+
+{% if not has_sources %}
+<div class="card">Nothing to collect from yet. <a href="{{ url_for('connections') }}">Add a connection</a> to get started.</div>
+{% endif %}
+
+<div class="card row">
+  <form class="inline" method="post" action="{{ url_for('collect', ym=period|string) }}">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button class="btn primary" onclick="this.textContent='Collecting…'">Collect now</button>
+  </form>
+  <form class="inline" method="post" action="{{ url_for('send', ym=period|string) }}"
+        onsubmit='return confirm({{ (("Send " if delivery.method == "smtp" else "Prepare an email with ") ~ entries|length ~ " file(s) to " ~ (delivery.to or "your accountant") ~ "?" ~ ("" if complete else "\n\nNot everything is here yet."))|tojson }})'>
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button class="btn" {% if not entries %}disabled{% endif %}>
+      {{ 'Send to accountant' if delivery.method == 'smtp' else 'Email to accountant (Apple Mail)' }}
+    </button>
+  </form>
+  <a class="btn" href="{{ url_for('download_zip', ym=period|string) }}">Download zip</a>
+  {% if is_mac %}
+  <form class="inline" method="post" action="{{ url_for('open_folder', ym=period|string) }}">
+    <input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn">Open folder</button>
+  </form>
+  {% endif %}
+</div>
+
+{% if missing_items or missing_vendors %}
+<div class="card">
+  <h2>Still needed</h2>
+  {% for i in missing_items %}
+  <div class="need">
+    <div><b>{{ i.vendor }}</b> <span class="muted">{{ i.label }}</span></div>
+    <div class="row">
+      {% if i.url %}<a class="btn small" href="{{ i.url }}" target="_blank" rel="noopener">Open {{ i.vendor }} ↗</a>{% endif %}
+      <form class="inline" method="post" enctype="multipart/form-data" action="{{ url_for('upload', ym=period|string) }}">
+        <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="item" value="{{ i.id }}">
+        <input type="file" name="file" required onchange="this.form.submit()">
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+  {% for v in missing_vendors %}
+  <div class="need">
+    <div><b>{{ v }}</b> <span class="muted">nothing found in your mail this month</span></div>
+    <div class="row">
+      <form class="inline" method="post" enctype="multipart/form-data" action="{{ url_for('upload', ym=period|string) }}">
+        <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="vendor" value="{{ v }}">
+        <input type="file" name="file" required onchange="this.form.submit()">
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+  <p class="hint">Pick the downloaded file and it's renamed and filed into this month.</p>
+</div>
+{% endif %}
+
+{% if run and (run.errors or run.warnings) %}
+<div class="card">
+  <h2>Notes from the last run</h2>
+  {% for name, err in run.errors.items() %}<p><span class="pill err">failed</span> <b>{{ name }}</b> <span class="small">{{ err }}</span></p>{% endfor %}
+  {% for w in run.warnings %}<p class="small"><span class="pill warn">check</span> {{ w }}</p>{% endfor %}
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Files ({{ entries|length }})</h2>
+  {% if entries %}
+  <div class="scroll"><table>
+    <tr><th>Vendor</th><th>File</th><th>Date</th><th>From</th><th></th></tr>
+    {% for e in entries %}
+    <tr>
+      <td><b>{{ e.vendor }}</b></td>
+      <td><a href="{{ url_for('file', ym=period|string, name=e.name) }}" target="_blank">{{ e.name }}</a></td>
+      <td class="small muted">{{ e.date or '' }}</td>
+      <td class="small muted">{{ e.source }}</td>
+      <td style="text-align:right">
+        <form class="inline" method="post" action="{{ url_for('remove', ym=period|string) }}" onsubmit='return confirm({{ ("Remove " ~ e.name ~ "?")|tojson }})'>
+          <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="name" value="{{ e.name }}">
+          <button class="btn small danger" title="Remove">✕</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% else %}<p class="muted">No files yet.</p>{% endif %}
+
+  <form class="row" style="margin-top:14px" method="post" enctype="multipart/form-data" action="{{ url_for('upload', ym=period|string) }}">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <span class="small muted">Add any other file:</span>
+    <input type="text" name="vendor" placeholder="Vendor" list="vendor-list" style="width:180px">
+    <datalist id="vendor-list">{% for v in vendors %}<option value="{{ v }}">{% endfor %}</datalist>
+    <input type="file" name="file" required>
+    <button class="btn small">Add</button>
+  </form>
+</div>
+{% endblock %}

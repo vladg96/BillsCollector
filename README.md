@@ -1,74 +1,93 @@
 # BillsCollector
 
-Every month, gathers your invoices from your mailboxes, APIs and billing
-portals, renames and dedupes them, and emails them to your accountant. Runs on
-GitHub Actions.
+Collects your monthly invoices from your email and the sites you download them
+from, files them per month, and sends the lot to your accountant. It runs on
+your Mac with a simple local UI. Your passwords stay in the macOS Keychain and
+your invoices stay on your disk.
 
-If a vendor you expect every month is missing, or a source fails, your
-accountant gets nothing. You get an **"Action needed"** email instead, with
-everything found so far and a list of what to fix.
+## Start it
 
-## How it works
+1. Get this repo onto your Mac, e.g. `git clone https://github.com/vladg96/BillsCollector`.
+2. Double-click **`BillsCollector.command`**. The first time, it sets itself up,
+   which takes about a minute. Then the app opens in your browser at
+   http://127.0.0.1:8765.
+   - If macOS says it's from an unidentified developer, right-click the file → **Open**.
+   - It needs Python 3.10 or newer. If you don't have it: `brew install python`.
+3. Leave the Terminal window open while you use the app. Close it to stop.
 
-| Source | What it handles | Config `type` |
-| --- | --- | --- |
-| Mailbox | PDF attached to the email; email with a "download invoice" link. Works with Gmail, Yahoo, Outlook or any IMAP mailbox, and you can add as many mailboxes as you like. | `imap` |
-| Stripe | Invoices you issued to your own clients | `stripe` |
-| Any URL | An API or link that returns the month's PDF | `http` |
-| Portal | A website where you log in and click download (headless browser) | `plugin` + `collectors.portal` |
-| Anything else | Your own Python function `collect(period, cfg) -> list[Invoice]` | `plugin` |
+## Set it up once
 
-Each mail rule has a `vendor` and `from` (a sender substring). It can also take
-a `subject` (regex), `links` (regex for download links) and `attachments`
-(true/false). Mail is read-only: it is never marked as read or moved.
+**Connections:** where invoices come from.
+- **Apple Mail on this Mac** covers every account already in Mail.app (work,
+  Gmail, Yahoo, …) with no extra password. macOS protects Mail's folder, so turn
+  on *System Settings → Privacy & Security → Full Disk Access* for **Terminal**,
+  then restart Terminal.
+- **Gmail / Yahoo / Outlook / iCloud / other**: sign in with an *app password*.
+  This is a separate password that only allows mail access and can be revoked
+  any time. Each form links to where you create it. Use these for mailboxes
+  that aren't in Mail.app.
 
-A **catch-all** rule picks up mail you forward to yourself with `[bills]` in
-the subject. Use it for anything that can't be automated, such as portals with
-2FA on every login or paper bills you scanned.
+**Vendors:** who sends bills, e.g. *Digi, sender contains `@digi.ro`*. Every
+connection is searched for every vendor.
+- The app takes the PDF attachments and can follow "download your invoice"
+  links.
+- Vendors are expected every month by default, so you're told when one is
+  missing.
 
-Files are named `2026-09-03_Vodafone_factura.pdf`. Large bundles are split over
-several emails, kept under 18 MB each by default.
+**Checklist:** things you download yourself, like **Revolut Business
+statements** (one PDF/CSV per currency).
+- Each month they appear under *Still needed* with a button that opens Revolut
+  and a file picker.
+- The file you pick is renamed (e.g. `2026-09_Revolut_EUR-statement-PDF.pdf`)
+  and filed into the month.
 
-## Setup
+**Settings:**
+- Your accountant's address and message.
+- How to send:
+  - **Apple Mail**: opens a ready email with everything attached, and you
+    press Send.
+  - **Directly**: sends from one of your mailbox connections.
+- **Automatic monthly run**: on the day you pick, the Mac collects last
+  month's invoices and notifies you. If the Mac is asleep that day, it runs
+  when it wakes. For this run to read Apple Mail, also give Full Disk Access to
+  the Python path shown on the Settings page.
 
-1. **Keep this repo private.** The run artifacts contain your invoices.
-2. `cp config.example.yaml config.yaml` and fill in your vendors.
-   - Not sure what a vendor's emails look like? Open one and copy the sender
-     domain into `from`.
-   - If you'd rather not commit `config.yaml`, paste its contents into a
-     secret named `BILLS_CONFIG` instead.
-3. Create **app passwords**. Both Gmail and Yahoo need 2-step verification
-   turned on first.
-   - Gmail: https://myaccount.google.com/apppasswords
-   - Yahoo: Account security → Generate app password
-4. Add each `${NAME}` used in the config as a repo secret under
-   *Settings → Secrets and variables → Actions*, for example:
-   `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `YAHOO_USER`, `YAHOO_APP_PASSWORD`,
-   `ACCOUNTANT_EMAIL`. Every secret is exposed to the config automatically.
-5. Go to *Actions → Collect invoices → Run workflow*, pick last month and set
-   `send = no`. Check the job summary and the `invoices` artifact. Tweak the
-   rules until nothing is missing.
+## Every month
 
-After that it runs by itself on the **5th of every month** and collects the
-previous month by date received.
+Open **Months**, click **Collect now** (or let the monthly run do it), then:
+1. Add whatever *Still needed* lists.
+2. Check the files.
+3. Click **Email to accountant**.
 
-### Run options (manual runs)
+Nothing is sent to your accountant without you clicking it.
 
-- `send = auto`: emails your accountant only if everything is there.
-- `send = no`: builds the zip only.
-- `send = force`: sends even if something is missing.
-- `month`: any past month, e.g. `2026-07`.
+Invoices are saved in `~/Library/Application Support/BillsCollector/invoices/<YYYY-MM>/`.
 
-## Local use
+## Command line
 
 ```bash
-pip install -r requirements.txt
-export GMAIL_USER=... GMAIL_APP_PASSWORD=...   # whatever your config uses
-python -m billscollector check                 # validate config + secrets
-python -m billscollector run --month 2026-09 --no-send
-python -m pytest -q
+.venv/bin/python -m billscollector ui                     # the app
+.venv/bin/python -m billscollector run --month 2026-09    # collect a month
+.venv/bin/python -m billscollector check                  # test all connections
 ```
 
-For portal collectors you also need
-`pip install playwright && python -m playwright install chromium`.
-The workflow installs Playwright automatically when the config uses it.
+## Coming next
+
+- **Revolut Business, read-only API.** Automatic CSV per currency, plus
+  matching every card payment to an invoice so missing ones are flagged.
+- **Website logins.** Click *Connect*, log in once in a browser window, and the
+  app downloads invoices from that portal each month (`collectors/portal.py`).
+
+## Running headless on GitHub Actions (optional)
+
+`.github/workflows/collect-invoices.yml` can run the mailbox/API part on a
+schedule without your Mac. It uses a `config.yaml` in the repo root (see
+`config.example.yaml`), and `${NAME}` placeholders in it are filled from repo
+secrets. Keep the repo private if you use this.
+
+## Development
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt pytest
+.venv/bin/python -m pytest -q
+```

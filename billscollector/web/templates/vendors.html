@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Vendors · BillsCollector{% endblock %}
+{% block body %}
+<h1>Vendors</h1>
+<p class="sub">Who sends you bills by email, and how to recognise them. Every mail connection is searched for all of these.</p>
+
+<div class="card">
+  {% if vendors %}
+  <div class="scroll"><table>
+    <tr><th>Vendor</th><th>From</th><th>Subject</th><th>Takes</th><th></th></tr>
+    {% for v in vendors %}
+    <tr>
+      <td><b>{{ v.vendor }}</b>{% if v.required is sameas false %} <span class="pill off">optional</span>{% endif %}</td>
+      <td class="small">{{ v['from'] if v['from'] is string else (v['from'] or [])|join(', ') }}</td>
+      <td class="small muted">{{ v.subject or '' }}</td>
+      <td class="small muted">
+        {{ 'attachments' if v.attachments is not sameas false }}{{ ' + ' if v.attachments is not sameas false and v.links }}{{ 'links' if v.links }}
+      </td>
+      <td style="text-align:right;white-space:nowrap">
+        <a class="btn small" href="{{ url_for('vendors', edit=loop.index0) }}">Edit</a>
+        <form class="inline" method="post" action="{{ url_for('delete_vendor', idx=loop.index0) }}"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn small danger">✕</button></form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% else %}<p class="muted">No vendors yet.</p>{% endif %}
+</div>
+
+<div class="card" id="form">
+  <h2>{{ 'Edit ' ~ current.vendor if current else 'Add a vendor' }}</h2>
+  <form method="post">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    {% if current %}<input type="hidden" name="index" value="{{ edit }}">{% endif %}
+    {% set c = current or {} %}
+    <label>Vendor name</label>
+    <input type="text" name="vendor" value="{{ c.vendor or '' }}" placeholder="e.g. Digi" required>
+    <label>Sender contains</label>
+    <input type="text" name="from" value="{{ c['from'] if c['from'] is string else (c['from'] or [])|join(', ') }}" placeholder="e.g. @digi.ro, facturi@digi.ro">
+    <div class="hint">Part of the sender's address. Several? Separate with commas. Tip: open one of their emails and copy the domain after the @.</div>
+    <label>Subject matches <span class="muted">(optional)</span></label>
+    <input type="text" name="subject" value="{{ c.subject or '' }}" placeholder="e.g. factura|invoice">
+    <div class="hint">Only needed if the vendor also sends newsletters. Use | for "or".</div>
+    <label>Download links matching <span class="muted">(optional)</span></label>
+    <input type="text" name="links" value="{{ c.links or '' }}" placeholder="e.g. invoice|download">
+    <div class="hint">For emails that link to the invoice instead of attaching it.</div>
+    <label class="check"><input type="checkbox" name="attachments" {{ 'checked' if c.attachments is not sameas false }}> Take PDF attachments</label>
+    <label class="check"><input type="checkbox" name="required" {{ 'checked' if c.required is not sameas false }}> Expected every month (flag it when missing)</label>
+    <div class="row" style="margin-top:16px">
+      <button class="btn primary">Save</button>
+      {% if current %}<a class="btn" href="{{ url_for('vendors') }}">Cancel</a>{% endif %}
+    </div>
+  </form>
+</div>
+{% endblock %}

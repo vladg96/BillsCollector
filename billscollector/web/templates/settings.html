@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Settings · BillsCollector{% endblock %}
+{% block body %}
+<h1>Settings</h1>
+<p class="sub">Who gets the invoices, and when the app collects them.</p>
+
+<div class="card">
+<form method="post">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <h2>Accountant</h2>
+  <label>Send to</label>
+  <input type="text" name="to" value="{{ d.to if d.to is string else (d.to or [])|join(', ') }}" placeholder="office@highconta.ro">
+  <label>Cc <span class="muted">(optional)</span></label>
+  <input type="text" name="cc" value="{{ d.cc if d.cc is string else (d.cc or [])|join(', ') }}">
+  <label>Your name or company, added to the subject</label>
+  <input type="text" name="name" value="{{ d.name or '' }}" placeholder="e.g. Vlad Garau PFA">
+  <label>Message</label>
+  <textarea name="intro" rows="4" placeholder="Hi,&#10;&#10;Please find attached the invoices for {month}.">{{ d.intro or '' }}</textarea>
+  <div class="hint"><code>{month}</code> becomes e.g. "September 2026". The file list is added below it.</div>
+
+  <label>How to send</label>
+  <label class="check"><input type="radio" name="method" value="applemail" {{ 'checked' if d.method != 'smtp' }}> Open a ready email in Apple Mail, and I press Send</label>
+  <label class="check"><input type="radio" name="method" value="smtp" {{ 'checked' if d.method == 'smtp' }}> Send directly from one of my mailboxes</label>
+  <select name="smtp_source" style="margin-top:6px">
+    <option value="">- mailbox to send from -</option>
+    {% for s in mailboxes %}<option value="{{ s.id }}" {{ 'selected' if d.smtp_source == s.id }}>{{ s.name }} ({{ s.username }})</option>{% endfor %}
+  </select>
+
+  <h2 style="margin-top:22px">Monthly run</h2>
+  <label>Collect last month's invoices on day</label>
+  <input type="number" name="day" min="1" max="28" value="{{ schedule.day or 5 }}" style="width:90px">
+  <div class="hint">It collects and then notifies you to review and send. Nothing goes to your accountant without you.</div>
+
+  <div style="margin-top:16px"><button class="btn primary">Save</button></div>
+</form>
+</div>
+
+<div class="card row spread">
+  <div>
+    <h2 style="margin:0">Automatic monthly run on this Mac</h2>
+    <span class="small muted">{{ 'On.' if scheduled else 'Off.' }} If the Mac is asleep on the day, it runs when it wakes up.</span>
+    <div class="hint">To let the automatic run read Apple Mail, add this to Full Disk Access too:<br><code>{{ python }}</code></div>
+  </div>
+  {% if is_mac %}
+  <form class="inline" method="post" action="{{ url_for('schedule') }}">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="action" value="{{ 'remove' if scheduled else 'install' }}">
+    <button class="btn {{ '' if scheduled else 'primary' }}">{{ 'Turn off' if scheduled else 'Turn on' }}</button>
+  </form>
+  {% else %}<span class="small muted">macOS only</span>{% endif %}
+</div>
+
+<div class="card">
+  <h2>Advanced: config file</h2>
+  <p class="small muted">{{ config_path }} · invoices in {{ data_dir }}/invoices · passwords in the {{ vault_where }}</p>
+  <form method="post">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <textarea name="raw" rows="16" spellcheck="false">{{ raw }}</textarea>
+    <div style="margin-top:10px"><button class="btn">Save config file</button></div>
+  </form>
+</div>
+{% endblock %}

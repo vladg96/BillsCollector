@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from typing import Any
 
+from .applemail import AppleMailSource
 from .apis import HttpSource, PluginSource, StripeSource
 from .base import Source
 from .imap import ImapSource
 
 REGISTRY: dict[str, type[Source]] = {
-    cls.type: cls for cls in (ImapSource, StripeSource, HttpSource, PluginSource)
+    cls.type: cls for cls in (ImapSource, AppleMailSource, StripeSource, HttpSource, PluginSource)
 }
 
 

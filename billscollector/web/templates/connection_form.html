@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}{{ preset.title }} · BillsCollector{% endblock %}
+{% block body %}
+<h1>{{ preset.title }}</h1>
+<p class="sub">{{ preset.blurb }}</p>
+<div class="card">
+<form method="post">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <label>Name</label>
+  <input type="text" name="name" value="{{ src.name or preset.title }}">
+
+  {% if preset.type == 'imap' %}
+    <label>Email address</label>
+    <input type="email" name="username" value="{{ src.username or '' }}" required autocomplete="off">
+
+    <label>App password</label>
+    <input type="password" name="password" autocomplete="new-password"
+           placeholder="{{ 'Leave empty to keep the saved one' if src.id else 'xxxx xxxx xxxx xxxx' }}">
+    <div class="hint">
+      Not your normal password: an app password that only allows mail access, and you can revoke it any time.
+      {% if preset.app_password_url %}<a href="{{ preset.app_password_url }}" target="_blank" rel="noopener">Create one ↗</a>{% endif %}
+    </div>
+
+    {% if kind == 'imap' %}
+    <label>IMAP server</label>
+    <input type="text" name="host" value="{{ src.host or '' }}" placeholder="imap.example.com" required>
+    {% endif %}
+
+    <label>Folders to search</label>
+    <input type="text" name="folders" value="{{ (src.folders or ['INBOX'])|join(', ') }}">
+    <div class="hint">Comma-separated. For Gmail, <code>[Gmail]/All Mail</code> also finds archived mail.</div>
+  {% else %}
+    <label>Mail folder</label>
+    <input type="text" name="path" value="{{ src.path or '' }}" placeholder="~/Library/Mail">
+    <div class="hint">
+      Leave empty for the default. macOS protects this folder: give the app that runs BillsCollector
+      (Terminal or iTerm) access in <b>System Settings → Privacy &amp; Security → Full Disk Access</b>,
+      then restart it. Mail.app should be set to download attachments.
+    </div>
+  {% endif %}
+
+  <div class="row" style="margin-top:18px">
+    <button class="btn primary">Save and test</button>
+    <a class="btn" href="{{ url_for('connections') }}">Cancel</a>
+  </div>
+</form>
+</div>
+{% endblock %}
