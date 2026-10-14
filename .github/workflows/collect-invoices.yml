@@ -1,0 +1,84 @@
+name: Collect invoices
+
+on:
+  schedule:
+    # 07:17 UTC on the 5th: gives late invoices a few days to arrive.
+    - cron: "17 7 5 * *"
+  workflow_dispatch:
+    inputs:
+      month:
+        description: "Month to collect (YYYY-MM). Empty = last month."
+        required: false
+      send:
+        description: "auto = accountant only if complete; no = just build the zip; force = send even if incomplete"
+        type: choice
+        options: [auto, "no", force]
+        default: auto
+
+permissions:
+  contents: read
+
+concurrency:
+  group: collect-invoices
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      # Every repository secret becomes an env var, so ${NAME} in config.yaml just works.
+      - name: Expose secrets to the config
+        env:
+          SECRETS_JSON: ${{ toJSON(secrets) }}
+        run: |
+          delim="EOF_$(openssl rand -hex 8)"
+          jq -r --arg d "$delim" 'to_entries[] | select(.key != "github_token")
+            | "\(.key)<<\($d)\n\(.value)\n\($d)"' <<< "$SECRETS_JSON" >> "$GITHUB_ENV"
+
+      # Keep config.yaml out of the repo by storing it as the BILLS_CONFIG secret instead.
+      - name: Write config from secret
+        if: env.BILLS_CONFIG != ''
+        run: printenv BILLS_CONFIG > config.yaml
+
+      - name: Install
+        run: |
+          pip install -r requirements.txt
+          if grep -q "collectors.portal\|playwright" config.yaml; then
+            pip install playwright
+            python -m playwright install --with-deps chromium
+          fi
+
+      - name: Collect and send
+        env:
+          MONTH: ${{ inputs.month }}
+          SEND: ${{ inputs.send }}
+        run: |
+          args=()
+          [ -n "$MONTH" ] && args+=(--month "$MONTH")
+          [ "$SEND" = "no" ] && args+=(--no-send)
+          [ "$SEND" = "force" ] && args+=(--force-send)
+          python -m billscollector run --out out "${args[@]}"
+
+      - name: Summary
+        if: always()
+        run: |
+          if ls out/summary-*.txt >/dev/null 2>&1; then
+            { echo '```'; cat out/summary-*.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Keep the bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: invoices
+          path: out/*.zip
+          retention-days: 30
+          if-no-files-found: ignore

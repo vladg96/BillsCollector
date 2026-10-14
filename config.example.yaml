@@ -1,0 +1,93 @@
+# Copy to config.yaml and edit. Never put passwords here: use ${ENV_VAR}
+# placeholders and store the values as GitHub Actions secrets.
+#
+# Every rule/source with a vendor is "required" by default: if nothing is found
+# for it in a month, the bundle is held back and you get an "action needed"
+# email instead of your accountant getting an incomplete set.
+
+sources:
+  # ---- Mailboxes (IMAP works for Gmail, Yahoo, Outlook, iCloud, ...) ----
+  - type: imap
+    name: gmail
+    host: imap.gmail.com
+    username: ${GMAIL_USER}
+    password: ${GMAIL_APP_PASSWORD}        # https://myaccount.google.com/apppasswords
+    folders: ["[Gmail]/All Mail"]          # catches archived/labelled mail too
+    rules:
+      # PDF attached to the email
+      - vendor: Vodafone
+        from: "@vodafone.es"
+        subject: "factura|invoice"         # regex, case-insensitive (optional)
+
+      # Several sender addresses for one vendor
+      - vendor: Google Workspace
+        from: ["payments-noreply@google.com", "workspace-noreply@google.com"]
+
+      # Email only has a "Download invoice" link. If the link needs a login,
+      # the report tells you which one to grab by hand.
+      - vendor: Notion
+        from: "@mail.notion.so"
+        attachments: false
+        links: "invoice|receipt"           # regex matched against link URLs
+
+      # Catch-all: forward any stray invoice to yourself with "[bills]" in the
+      # subject. extend_days lets you forward last month's ones early next month.
+      - vendor: Forwarded
+        subject: "\\[bills\\]"
+        required: false
+        extend_days: 4
+
+  - type: imap
+    name: yahoo
+    host: imap.mail.yahoo.com
+    username: ${YAHOO_USER}
+    password: ${YAHOO_APP_PASSWORD}        # Yahoo account security -> app password
+    rules:
+      - vendor: Endesa
+        from: "@endesa.es"
+
+  # ---- APIs ----
+  # Invoices you issued to your own clients through Stripe.
+  - type: stripe
+    name: stripe-issued
+    enabled: false
+    api_key: ${STRIPE_API_KEY}             # a restricted key with Invoices: read
+    vendor: Stripe (issued)
+
+  # Any URL that returns the month's PDF.
+  - type: http
+    name: example-api
+    enabled: false
+    vendor: ExampleCloud
+    url: "https://api.example.com/billing/{year}-{month:02d}/invoice.pdf"
+    headers:
+      Authorization: "Bearer ${EXAMPLE_TOKEN}"
+
+  # ---- Portals that need a login (headless browser) ----
+  - type: plugin
+    name: electricity-portal
+    enabled: false
+    module: collectors.portal
+    vendor: Iberdrola
+    login_url: https://www.example.com/login
+    username: ${PORTAL_USER}
+    password: ${PORTAL_PASSWORD}
+    username_selector: "input[name=email]"
+    password_selector: "input[type=password]"
+    submit_selector: "button[type=submit]"
+    invoices_url: https://www.example.com/account/invoices
+    row_text: "{mon} {year}"
+    download_selector: "a:has-text('PDF')"
+
+delivery:
+  smtp_host: smtp.gmail.com
+  smtp_port: 465
+  smtp_username: ${GMAIL_USER}
+  smtp_password: ${GMAIL_APP_PASSWORD}
+  from: ${GMAIL_USER}
+  owner: ${GMAIL_USER}                     # gets the "action needed" mail + a copy
+  to: ${ACCOUNTANT_EMAIL}
+  name: Your Name                          # appended to the subject
+  # hold = only you get the email if something is missing; send = always send
+  on_incomplete: hold
+  max_attachment_mb: 18                    # larger bundles are split over several emails
