@@ -43,6 +43,9 @@
     <label>Download links matching <span class="muted">(optional)</span></label>
     <input type="text" name="links" value="{{ c.links or '' }}" placeholder="e.g. invoice|download">
     <div class="hint">For emails that link to the invoice instead of attaching it.</div>
+    <label>Name on your Revolut card payments <span class="muted">(optional)</span></label>
+    <input type="text" name="merchant" value="{{ c.merchant or '' }}" placeholder="e.g. GOOGLE *GSUITE">
+    <div class="hint">Only if it looks nothing like the vendor name. Used to tick off card payments.</div>
     <label class="check"><input type="checkbox" name="attachments" {{ 'checked' if c.attachments is not sameas false }}> Take PDF attachments</label>
     <label class="check"><input type="checkbox" name="required" {{ 'checked' if c.required is not sameas false }}> Expected every month (flag it when missing)</label>
     <div class="row" style="margin-top:16px">

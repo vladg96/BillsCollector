@@ -15,6 +15,7 @@ from flask import (Flask, abort, flash, redirect, render_template, request, send
 
 from .. import config, deliver, paths, runner, vault
 from ..models import Period, slug
+from ..sources import revolut
 
 # Connection kinds offered in the UI. Mailboxes use IMAP with an app password.
 PRESETS: dict[str, dict[str, Any]] = {
@@ -102,6 +103,7 @@ def create_app(config_path: Path, invoices_root: Path | None = None, port: int =
             manual=cfg["manual"], complete=m.complete(cfg["manual"]), delivery=d,
             prev=str(prev_p), next=str(next_p), vendors=[v["vendor"] for v in cfg["vendors"]],
             has_sources=bool(cfg["sources"]),
+            payments=m.unmatched_payments(cfg["vendors"], cfg.get("ignore_merchants") or []),
         )
 
     @app.post("/month/<ym>/collect")
@@ -126,6 +128,16 @@ def create_app(config_path: Path, invoices_root: Path | None = None, port: int =
         vendor = item["vendor"] if item else (request.form.get("vendor") or "").strip() or "Other"
         name = m.add_file(f.filename, f.read(), vendor, item)
         flash(f"Added {name}.", "ok")
+        return redirect(url_for("month", ym=ym))
+
+    @app.post("/month/<ym>/ignore-merchant")
+    def ignore_merchant(ym: str):
+        cfg = load()
+        merchant = request.form.get("merchant", "").strip()
+        if merchant:
+            cfg["ignore_merchants"] = sorted(set(cfg.get("ignore_merchants") or []) | {merchant})
+            store(cfg)
+            flash(f"Won't ask about {merchant} again (undo in Settings → config file).", "ok")
         return redirect(url_for("month", ym=ym))
 
     @app.post("/month/<ym>/remove")
@@ -257,10 +269,88 @@ def create_app(config_path: Path, invoices_root: Path | None = None, port: int =
         cfg = load()
         cfg["sources"] = [s for s in cfg["sources"] if s.get("id") != sid]
         store(cfg)
-        vault.delete(vault.secret_name(sid, "password"))
+        for what in ("password", "private_key", "refresh_token"):
+            vault.delete(vault.secret_name(sid, what))
         test_results.pop(sid, None)
         flash("Connection removed.", "ok")
         return redirect(url_for("connections"))
+
+    # ---- Revolut Business (read-only API) ------------------------------------
+    def revolut_src(cfg: dict[str, Any], sid: str) -> dict[str, Any]:
+        src = next((s for s in cfg["sources"] if s.get("id") == sid and s["type"] == "revolut"), None)
+        if src is None:
+            abort(404)
+        return src
+
+    def cert_path(sid: str) -> Path:
+        return paths.data_dir() / f"{sid}-publiccert.cer"
+
+    @app.post("/connections/revolut/start")
+    def revolut_start():
+        cfg = load()
+        existing = [s for s in cfg["sources"] if s.get("type") == "revolut"]
+        sid = "revolut" if not existing else f"revolut-{len(existing) + 1}"
+        key_pem, cert_pem = revolut.generate_keypair()
+        vault.set(vault.secret_name(sid, "private_key"), key_pem)
+        cert_path(sid).write_text(cert_pem)
+        cfg["sources"].append({"id": sid, "type": "revolut", "name": "Revolut Business",
+                               "redirect_uri": revolut.DEFAULT_REDIRECT,
+                               "formats": ["pdf", "csv"]})
+        store(cfg)
+        return redirect(url_for("revolut_setup", sid=sid))
+
+    @app.get("/connections/revolut/<sid>")
+    def revolut_setup(sid: str):
+        cfg = load()
+        src = revolut_src(cfg, sid)
+        cert = cert_path(sid).read_text() if cert_path(sid).exists() else ""
+        connected = bool(vault.get(vault.secret_name(sid, "refresh_token")))
+        consent = (revolut.consent_url(src["client_id"], src["redirect_uri"])
+                   if src.get("client_id") else None)
+        return render_template("revolut.html", src=src, cert=cert, connected=connected,
+                               consent=consent, result=test_results.get(sid))
+
+    @app.post("/connections/revolut/<sid>/client")
+    def revolut_client(sid: str):
+        cfg = load()
+        src = revolut_src(cfg, sid)
+        src["client_id"] = request.form.get("client_id", "").strip()
+        src["redirect_uri"] = request.form.get("redirect_uri", "").strip() or revolut.DEFAULT_REDIRECT
+        store(cfg)
+        return redirect(url_for("revolut_setup", sid=sid) + "#authorize")
+
+    @app.post("/connections/revolut/<sid>/code")
+    def revolut_code(sid: str):
+        cfg = load()
+        src = revolut_src(cfg, sid)
+        try:
+            code = revolut.code_from_redirect(request.form.get("redirect", ""))
+            revolut.RevolutClient(sid, src["client_id"], src["redirect_uri"]).exchange_code(code)
+            test_results[sid] = _test(cfg, src)
+            flash("Revolut connected (read-only). " + test_results[sid][1],
+                  "ok" if test_results[sid][0] else "warn")
+        except Exception as exc:  # noqa: BLE001
+            flash(f"Couldn't connect: {exc}", "error")
+        return redirect(url_for("revolut_setup", sid=sid))
+
+    @app.post("/connections/revolut/<sid>/options")
+    def revolut_options(sid: str):
+        cfg = load()
+        src = revolut_src(cfg, sid)
+        src["formats"] = [f for f in ("pdf", "csv") if request.form.get(f"fmt_{f}")] or ["pdf"]
+        currencies = _csv(request.form.get("currencies", "").upper())
+        if currencies:
+            src["currencies"] = currencies
+        else:
+            src.pop("currencies", None)
+        company = request.form.get("company", "").strip()
+        if company:
+            src["company"] = company
+        else:
+            src.pop("company", None)
+        store(cfg)
+        flash("Saved.", "ok")
+        return redirect(url_for("revolut_setup", sid=sid))
 
     # ---- vendors (what to look for in mail) ---------------------------------
     @app.route("/vendors", methods=["GET", "POST"])
@@ -273,7 +363,7 @@ def create_app(config_path: Path, invoices_root: Path | None = None, port: int =
             if _csv(f.get("from")):
                 senders = _csv(f["from"])
                 v["from"] = senders[0] if len(senders) == 1 else senders
-            for key in ("subject", "links"):
+            for key in ("subject", "links", "merchant"):
                 if f.get(key, "").strip():
                     v[key] = f[key].strip()
             if not f.get("attachments"):

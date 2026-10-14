@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Revolut Business · BillsCollector{% endblock %}
+{% block body %}
+<div class="row spread">
+  <div>
+    <h1>Revolut Business</h1>
+    <p class="sub">Read-only access. The app builds each month's statement per currency (PDF + CSV) and lists card payments that have no invoice. It can't make payments.</p>
+  </div>
+  {% if connected %}<span class="pill ok">connected</span>{% else %}<span class="pill warn">setup not finished</span>{% endif %}
+</div>
+{% if result %}<div class="flash {{ 'ok' if result[0] else 'error' }}">{{ result[1] }}</div>{% endif %}
+
+<div class="card">
+  <h2>1 · Add this app's certificate in Revolut</h2>
+  <ol class="small" style="padding-left:18px;margin:0 0 10px">
+    <li>Open <a href="https://business.revolut.com/settings/api" target="_blank" rel="noopener">Revolut Business on the web ↗</a> → <b>Settings → APIs → Business API</b> → <b>Add API certificate</b>.</li>
+    <li>Title: <code>BillsCollector</code>. OAuth redirect URI: <code>{{ src.redirect_uri }}</code></li>
+    <li>X509 public key: paste the certificate below.</li>
+    <li>Revolut shows a <b>Client ID</b>. Paste it in step 2.</li>
+  </ol>
+  <textarea rows="7" readonly id="cert" onclick="this.select()">{{ cert }}</textarea>
+  <div class="row" style="margin-top:8px">
+    <button class="btn small" type="button" onclick="navigator.clipboard.writeText(document.getElementById('cert').value);this.textContent='Copied'">Copy certificate</button>
+    <span class="hint">The matching private key never leaves your Mac (it's in the Keychain).</span>
+  </div>
+</div>
+
+<div class="card" id="authorize">
+  <h2>2 · Client ID</h2>
+  <form method="post" action="{{ url_for('revolut_client', sid=src.id) }}">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Client ID</label>
+    <input type="text" name="client_id" value="{{ src.client_id or '' }}" required autocomplete="off">
+    <label>OAuth redirect URI <span class="muted">(must match what you entered in Revolut)</span></label>
+    <input type="text" name="redirect_uri" value="{{ src.redirect_uri }}">
+    <div style="margin-top:12px"><button class="btn {{ '' if src.client_id else 'primary' }}">Save</button></div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>3 · Approve read-only access</h2>
+  {% if consent %}
+  <p class="small">Click below, log in to Revolut and approve. You'll land on a page that may not load. That's expected. Copy the <b>whole address</b> from the browser bar and paste it here.</p>
+  <a class="btn primary" href="{{ consent }}" target="_blank" rel="noopener">Approve in Revolut ↗</a>
+  <form method="post" action="{{ url_for('revolut_code', sid=src.id) }}" style="margin-top:12px">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Address you landed on</label>
+    <input type="text" name="redirect" placeholder="{{ src.redirect_uri }}?code=oa_prod_…" required autocomplete="off">
+    <div class="hint">The code works once, expires within minutes, and is useless without your private key.</div>
+    <div style="margin-top:12px"><button class="btn {{ '' if connected else 'primary' }}">{{ 'Reconnect' if connected else 'Connect' }}</button></div>
+  </form>
+  {% else %}<p class="muted small">Save the Client ID first.</p>{% endif %}
+</div>
+
+<div class="card">
+  <h2>Statements</h2>
+  <form method="post" action="{{ url_for('revolut_options', sid=src.id) }}">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label class="check"><input type="checkbox" name="fmt_pdf" {{ 'checked' if 'pdf' in (src.formats or []) }}> PDF statement per currency</label>
+    <label class="check"><input type="checkbox" name="fmt_csv" {{ 'checked' if 'csv' in (src.formats or []) }}> CSV statement per currency</label>
+    <label>Only these currencies <span class="muted">(optional, default all accounts)</span></label>
+    <input type="text" name="currencies" value="{{ (src.currencies or [])|join(', ') }}" placeholder="EUR, USD, RON">
+    <label>Company name on the statement <span class="muted">(optional)</span></label>
+    <input type="text" name="company" value="{{ src.company or '' }}">
+    <div style="margin-top:12px"><button class="btn">Save</button></div>
+  </form>
+  <p class="hint">Using this, you can delete the Revolut items from the Checklist.</p>
+</div>
+{% endblock %}

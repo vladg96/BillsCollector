@@ -12,7 +12,7 @@
     <tr>
       <td>
         <b>{{ s.name or s.id }}</b><br>
-        <span class="small muted">{{ s.username or s.path or s.type }}</span>
+        <span class="small muted">{{ s.username or s.path or ('read-only API' if s.type == 'revolut' else s.type) }}</span>
       </td>
       <td>
         {% if s.enabled is sameas false %}<span class="pill off">off</span>
@@ -25,7 +25,8 @@
       <td style="text-align:right;white-space:nowrap">
         {% if s.id %}
         <form class="inline" method="post" action="{{ url_for('test_connection', sid=s.id) }}"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn small">Test</button></form>
-        {% if s.preset or s.type in presets %}<a class="btn small" href="{{ url_for('edit_connection', sid=s.id) }}">Edit</a>{% endif %}
+        {% if s.type == 'revolut' %}<a class="btn small" href="{{ url_for('revolut_setup', sid=s.id) }}">Set up</a>
+        {% elif s.preset or s.type in presets %}<a class="btn small" href="{{ url_for('edit_connection', sid=s.id) }}">Edit</a>{% endif %}
         <form class="inline" method="post" action="{{ url_for('toggle_connection', sid=s.id) }}"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn small">{{ 'Turn on' if s.enabled is sameas false else 'Turn off' }}</button></form>
         <form class="inline" method="post" action="{{ url_for('delete_connection', sid=s.id) }}" onsubmit="return confirm('Remove this connection?')"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn small danger">Remove</button></form>
         {% else %}<span class="small muted">edit in Settings → config file</span>{% endif %}
@@ -44,8 +45,12 @@
     {% for key, p in presets.items() %}
     <a class="tile" href="{{ url_for('connection_form', kind=key) }}"><b>{{ p.title }}</b><span class="small muted">{{ p.blurb }}</span></a>
     {% endfor %}
-    <a class="tile" href="{{ url_for('checklist') }}"><b>Revolut statements &amp; other downloads</b><span class="small muted">Things you download by hand each month. The app reminds you and files them.</span></a>
+    <form class="inline" method="post" action="{{ url_for('revolut_start') }}" style="display:contents">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button class="tile" style="text-align:left;background:none;font:inherit;color:inherit;cursor:pointer"><b>Revolut Business</b><span class="small muted">Read-only. Monthly statements per currency, and card payments missing an invoice.</span></button>
+    </form>
+    <a class="tile" href="{{ url_for('checklist') }}"><b>Other monthly downloads</b><span class="small muted">Files you download by hand. The app reminds you and files them.</span></a>
   </div>
-  <p class="hint">Revolut Business (read-only API) and website logins are coming next.</p>
+  <p class="hint">Website logins (portals) are coming next.</p>
 </div>
 {% endblock %}

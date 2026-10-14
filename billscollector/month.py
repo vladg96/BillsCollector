@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import zipfile
 from dataclasses import dataclass
 from datetime import datetime
@@ -11,6 +12,27 @@ from typing import Any
 
 from .bundle import RunReport
 from .models import Period, slug
+
+
+def _as_list(value: Any) -> list[str]:
+    if not value:
+        return []
+    return [value] if isinstance(value, str) else list(value)
+
+
+_STOP = {"srl", "ltd", "inc", "llc", "gmbh", "limited", "romania", "com", "www", "the", "and",
+         "services", "service", "payment", "payments", "online", "store", "shop", "company"}
+
+
+def _words(s: str) -> set[str]:
+    return {w for w in re.split(r"[^a-z0-9]+", s.lower()) if len(w) >= 3 and w not in _STOP}
+
+
+def similar(merchant: str, name: str) -> bool:
+    """'GOOGLE *GSUITE_OH' ~ 'Google Workspace', 'Digi Romania SA' ~ 'Digi'."""
+    a, b = _words(merchant), _words(name)
+    return bool(a & b) or (bool(a) and bool(b) and
+                           any(x in y or y in x for x in a for y in b if min(len(x), len(y)) >= 4))
 
 
 @dataclass
@@ -65,6 +87,7 @@ class Month:
             "errors": report.errors,
             "warnings": report.warnings,
             "found": len(report.saved),
+            "payments": report.payments,
             "duplicates": report.duplicates,
         }
         self.save()
@@ -104,6 +127,21 @@ class Month:
     def missing_items(self, manual: list[dict[str, Any]]) -> list[dict[str, Any]]:
         done = {e.item for e in self.entries() if e.item}
         return [i for i in manual if i.get("id") not in done]
+
+    def unmatched_payments(self, vendors: list[dict[str, Any]],
+                           ignore: list[str]) -> list[dict[str, Any]]:
+        """Card payments with no file from a vendor of a similar name."""
+        names = [e.vendor for e in self.entries()]
+        aliases = {v["vendor"]: [v["vendor"]] + _as_list(v.get("merchant")) for v in vendors}
+        out = []
+        for p in (self.data["run"] or {}).get("payments", []):
+            merchant = p.get("merchant", "")
+            if any(similar(merchant, i) for i in ignore):
+                continue
+            if any(similar(merchant, alias) for n in names for alias in aliases.get(n, [n])):
+                continue
+            out.append(p)
+        return out
 
     def complete(self, manual: list[dict[str, Any]]) -> bool:
         run = self.data["run"]

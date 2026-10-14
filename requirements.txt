@@ -2,5 +2,7 @@ PyYAML>=6.0
 requests>=2.31
 flask>=3.0
 keyring>=24       # stores passwords in the macOS Keychain
+cryptography>=42  # Revolut: key + signed requests
+fpdf2>=2.7        # Revolut: PDF statements
 # Only needed for website-login (portal) collectors:
 # playwright>=1.45

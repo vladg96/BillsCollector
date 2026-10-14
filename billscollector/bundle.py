@@ -23,6 +23,7 @@ class RunReport:
     errors: dict[str, str] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
     required: list[str] = field(default_factory=list)
+    payments: list[dict] = field(default_factory=list)
     duplicates: int = 0
 
     @property
@@ -70,7 +71,8 @@ def save(invoices: list[Invoice], period: Period, out_dir: Path, report: RunRepo
         stem, suffix, n = path.stem, path.suffix, 2
         taken = {s.path for s in report.saved}
         # Re-running into the same folder reuses identical files instead of adding copies.
-        while path in taken or (path.exists() and path.read_bytes() != inv.content):
+        while path in taken or (path.exists() and not inv.replace
+                                and path.read_bytes() != inv.content):
             path = folder / f"{stem}-{n}{suffix}"
             n += 1
         path.write_bytes(inv.content)

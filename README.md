@@ -34,12 +34,22 @@ connection is searched for every vendor.
 - Vendors are expected every month by default, so you're told when one is
   missing.
 
-**Checklist:** things you download yourself, like **Revolut Business
-statements** (one PDF/CSV per currency).
-- Each month they appear under *Still needed* with a button that opens Revolut
-  and a file picker.
-- The file you pick is renamed (e.g. `2026-09_Revolut_EUR-statement-PDF.pdf`)
-  and filed into the month.
+**Revolut Business (read-only):** Connections → *Revolut Business*. A 3-step
+wizard:
+1. The app creates a certificate. You paste it in Revolut Business →
+   *Settings → APIs → Business API*.
+2. You paste back the Client ID.
+3. You approve read-only access.
+
+After that, each month it generates a **PDF and a CSV statement per currency
+account**, built from the API (not Revolut's stamped version). The month page
+also lists **card payments that have no invoice**, so you can add the invoice
+or mark the merchant "No invoice needed". Access is READ-only: the app cannot
+make payments. Your private key and access token stay in the Keychain.
+
+**Checklist:** anything else you download by hand each month.
+- It appears under *Still needed* with a link and a file picker.
+- The file you pick is renamed and filed into the month.
 
 **Settings:**
 - Your accountant's address and message.
@@ -73,8 +83,6 @@ Invoices are saved in `~/Library/Application Support/BillsCollector/invoices/<YY
 
 ## Coming next
 
-- **Revolut Business, read-only API.** Automatic CSV per currency, plus
-  matching every card payment to an invoice so missing ones are flagged.
 - **Website logins.** Click *Connect*, log in once in a browser window, and the
   app downloads invoices from that portal each month (`collectors/portal.py`).
 

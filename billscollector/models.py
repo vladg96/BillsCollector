@@ -52,6 +52,7 @@ class Invoice:
     source: str
     date: date | None = None
     note: str = ""
+    replace: bool = False  # generated files (statements) overwrite the previous version
     sha256: str = field(init=False)
 
     def __post_init__(self) -> None:

@@ -39,6 +39,7 @@ def collect(cfg: dict[str, Any], period: Period, report: bundle.RunReport) -> li
             report.required += source.required_vendors()
             got = source.collect(period)
             report.warnings += getattr(source, "warnings", [])
+            report.payments += getattr(source, "payments", [])
             log.info("%s: %d file(s)", name, len(got))
             invoices += got
         except Exception as exc:  # one broken source must not sink the whole run
