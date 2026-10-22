@@ -52,6 +52,17 @@ def call_simulated(m, task, trial):
     lat = m["sim"]["ttft"] + tout / m["sim"]["tps"] * rng.uniform(0.85, 1.25)
     return dict(text=text, finish=finish, tin=tin, tout=tout, latency=lat)
 
+def fill_prices(cfg):
+    """Fill missing price_in/price_out ($ per 1M tokens) from OpenRouter's public model list, so cost numbers are real."""
+    entries = [m for m in cfg["models"] + [cfg.get("generator"), cfg.get("judge")] if m and "price_in" not in m]
+    if not entries: return
+    with urllib.request.urlopen("https://openrouter.ai/api/v1/models", timeout=30) as r:
+        prices = {d["id"]: d["pricing"] for d in json.load(r)["data"]}
+    for m in entries:
+        p = prices.get(m["model"])
+        if not p: raise SystemExit(f"No price for model id '{m['model']}': check the id at openrouter.ai/models or set price_in/price_out")
+        m["price_in"], m["price_out"] = float(p["prompt"]) * 1e6, float(p["completion"]) * 1e6
+
 # ---------------------------------------------------------------- grading
 def extract_code(text):
     blocks = re.findall(r"```(?:python|py)?\n(.*?)```", text, re.S)

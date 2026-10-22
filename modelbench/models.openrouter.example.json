@@ -1,0 +1,8 @@
+{"models": [
+ {"name": "claude-sonnet", "base_url": "https://openrouter.ai/api/v1", "api_key_env": "OPENROUTER_API_KEY", "model": "PICK-ID-FROM-openrouter.ai/models"},
+ {"name": "gpt",           "base_url": "https://openrouter.ai/api/v1", "api_key_env": "OPENROUTER_API_KEY", "model": "PICK-ID-FROM-openrouter.ai/models"},
+ {"name": "cheap-open",    "base_url": "https://openrouter.ai/api/v1", "api_key_env": "OPENROUTER_API_KEY", "model": "PICK-ID-FROM-openrouter.ai/models"}
+],
+ "generator": {"name": "generator", "base_url": "https://openrouter.ai/api/v1", "api_key_env": "OPENROUTER_API_KEY", "model": "STRONGEST-MODEL-ID"},
+ "judge":     {"name": "judge",     "base_url": "https://openrouter.ai/api/v1", "api_key_env": "OPENROUTER_API_KEY", "model": "A-MODEL-NOT-IN-THE-LIST-ABOVE"}
+}

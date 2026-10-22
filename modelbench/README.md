@@ -44,3 +44,9 @@ Caveats: LLM judges favour their own style (use a judge that is not a candidate;
    - Live: `MODELS_JSON` = contents of your models.json (with generator + judge), plus the API key env var it references (e.g. `GATEWAY_API_KEY`).
 3. Settings -> Networking -> Generate Domain, open it on your phone.
 Railway sets `PORT`; the server then binds 0.0.0.0 and refuses to serve live mode without `APP_PASSWORD`.
+
+## Going live in 3 steps (OpenRouter = one key, many vendors)
+1. Get a key at openrouter.ai, `export OPENROUTER_API_KEY=...`
+2. `cp models.openrouter.example.json models.json`, replace the placeholder ids with real ones from openrouter.ai/models. Prices are fetched automatically; override with `price_in`/`price_out` ($ per 1M tokens) if you want.
+3. `python3 server.py --models models.json`  (a spend of roughly a few cents per run with 3-4 models x 2 trials)
+Any other OpenAI-compatible gateway works too (set `base_url`, `api_key_env`, and explicit prices).

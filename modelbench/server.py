@@ -6,7 +6,7 @@
 """
 import argparse, base64, hmac, json, os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-import industry
+import industry, modelbench
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -55,6 +55,7 @@ if __name__ == "__main__":
           json.load(open(a.models or ("models.sim.json" if a.simulate else "models.json")))
     if not a.simulate and not ("generator" in cfg and "judge" in cfg):
         raise SystemExit('models file needs "generator" and "judge" entries (see models.example.json)')
+    if not a.simulate: modelbench.fill_prices(cfg)
     host = "0.0.0.0" if os.environ.get("PORT") else "127.0.0.1"
     if host == "0.0.0.0" and not a.simulate and not os.environ.get("APP_PASSWORD"):
         raise SystemExit("Refusing to serve live (paid) mode publicly without APP_PASSWORD set")
