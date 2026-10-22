@@ -1,0 +1,151 @@
+<!doctype html><html lang=en><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>Model Bench</title>
+<style>
+:root{--bg:#fff;--fg:#1a1a1a;--mut:#6b6b6b;--line:#e3e3e3;--card:#f8f8f8;--acc:#5b3df5;--q:#2f9e63;--c:#d98a1b;--s:#2a7de1}
+@media(prefers-color-scheme:dark){:root{--bg:#15171a;--fg:#e8e8e8;--mut:#9a9a9a;--line:#2d3035;--card:#1d2024;--acc:#8f7bff;--q:#46c283;--c:#f0a73d;--s:#5ba2f5}}
+*{box-sizing:border-box}body{font:15px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--fg);max-width:1040px;margin:0 auto;padding:24px 16px 80px}
+h1{margin:0}h2{margin:28px 0 8px;font-size:17px}.mut{color:var(--mut)}.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+select,input,textarea,button{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 12px;max-width:100%}
+textarea{width:100%;min-height:140px;line-height:1.45}button{cursor:pointer;background:var(--acc);color:#fff;border:0;font-weight:600}button:disabled{opacity:.5;cursor:wait}
+button.ghost{background:transparent;color:var(--fg);border:1px solid var(--line);font-weight:500}button.ghost.on{border-color:var(--acc);color:var(--acc)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-top:10px}
+.warn{background:#fde7e7;color:#7a1f1f;padding:8px 12px;border-radius:8px;margin:8px 0}
+table{border-collapse:collapse;width:100%}th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}
+.scroll{overflow-x:auto}.bar{height:8px;border-radius:4px;background:var(--line);overflow:hidden;min-width:90px}.bar>i{display:block;height:100%}
+.num{font-variant-numeric:tabular-nums;font-weight:600}.tag{font-size:12px;padding:2px 8px;border-radius:99px;border:1px solid var(--line);color:var(--mut);white-space:nowrap}
+.tag.good{border-color:var(--q);color:var(--q)}.tag.bad{border-color:#d34;color:#d34}.chip{display:inline-flex;gap:6px;align-items:center;margin:3px 4px 3px 0}
+li{margin:6px 0}details{margin-top:8px}summary{cursor:pointer;color:var(--mut)}pre{white-space:pre-wrap;font-size:13px;max-height:260px;overflow:auto}
+.f{display:grid;gap:4px;margin:10px 0}.f input{width:100%}
+</style>
+<h1>Model Bench</h1><div class=mut>Pick an industry → a model writes a realistic task and rubric → your models attempt it → a judge scores quality; cost and speed are measured. Runs entirely in your browser via OpenRouter.</div>
+
+<h2>0 · Setup <span class=mut style="font-weight:400" id=setupnote></span></h2>
+<details id=setup open><summary>OpenRouter key and models</summary><div class=card>
+ <div class=f><label>OpenRouter API key <span class=mut>(stored only in this browser; use a key with a spend limit)</span></label><input id=key type=password placeholder="sk-or-..." autocomplete=off></div>
+ <div class=f><label>Models to compare <span class=mut>(type to search OpenRouter ids)</span></label>
+  <div class=row><input id=addm list=mlist placeholder="e.g. anthropic/..., openai/..." style="flex:1;min-width:200px"><button class=ghost id=addbtn>Add</button></div><div id=chips></div></div>
+ <div class=f><label>Test-case writer model <span class=mut>(use a strong one)</span></label><input id=gen list=mlist></div>
+ <div class=f><label>Judge model <span class=mut>(should NOT be one of the compared models)</span></label><input id=judge list=mlist></div>
+ <datalist id=mlist></datalist><div class=mut id=mcount></div></div></details>
+
+<h2>1 · Industry</h2>
+<div class=row><select id=ind></select><input id=focus placeholder="Optional steer or custom industry" style="flex:1;min-width:200px"><button id=genbtn>Generate test case</button></div>
+<div id=scen style="display:none"><h2>2 · Test case <span class=mut style="font-weight:400">— editable</span></h2>
+ <div class=card><b id=title></b><textarea id=prompt style="margin-top:8px"></textarea><div class=mut style="margin-top:8px">Rubric (judge scores each 1–5, weighted):</div><div id=rubric></div></div>
+ <div class=row style="margin-top:12px"><label>Trials per model <select id=trials><option>1</option><option selected>2</option><option>3</option></select></label><button id=runbtn>Run benchmark</button><span id=status class=mut></span></div></div>
+<div id=out></div>
+
+<script>
+const $=id=>document.getElementById(id);
+const INDUSTRIES={"Banking & Fintech":"payments reconciliation, ledgers, PSD2/SCA, fraud rules, rounding and currency handling","Healthcare":"HL7/FHIR messages, patient identifiers, PII redaction, GDPR and audit trails","Insurance":"claims processing, policy rules engines, actuarial tables, regulatory reporting","E-commerce & Retail":"pricing and promotions engines, inventory sync, checkout, returns","Telecom":"CDR/billing pipelines, network inventory, provisioning APIs, SLA reporting","Manufacturing & IoT":"sensor telemetry, predictive maintenance, PLC/OPC-UA gateways, batch traceability","Public Sector":"citizen services, legacy COBOL/mainframe migration, accessibility, data residency","Cloud & Platform Engineering":"Kubernetes manifests, Terraform, CI/CD, cost optimisation, incident runbooks"};
+const GEN_SYSTEM="You design realistic, discriminating evaluations for AI coding assistants. Reply with a single JSON object and nothing else.";
+const GEN_PROMPT=(ind,focus,extra)=>`Design ONE evaluation task for an AI coding assistant in the industry: ${ind} (typical work: ${focus}).
+${extra}
+The task must be something a staff engineer at a real company in this industry would hand to a coding agent: concrete, self-contained, with
+hidden pitfalls (edge cases, compliance or domain rules) that separate strong models from weak ones. It must be answerable in one reply (<= ~60 lines of code plus brief explanation).
+
+Return JSON: {"title": str, "prompt": str (the full task text given to the assistant, including all needed context),
+"rubric": [4 to 5 items {"name": str, "weight": number, "description": str (what a 5/5 vs 1/5 answer looks like, concretely)}]}
+Rubric must include: correctness of the core logic, handling of the domain-specific pitfall(s), and code quality/maintainability. Weights sum to 1.`;
+const JUDGE_SYSTEM="You are a strict, impartial senior reviewer. You never reward length or confident tone, only correctness and fit to the rubric. Reply with a single JSON object and nothing else.";
+const JUDGE_PROMPT=(task,rubric,resp)=>`TASK GIVEN TO THE ASSISTANT:\n${task}\n\nRUBRIC (score each criterion 1-5; 5 = fully meets, 1 = fails):\n${rubric}\n\nASSISTANT RESPONSE:\n${resp}\n\nReturn JSON: {"scores": {<criterion name>: integer 1-5, ...}, "reasons": {<criterion name>: one short sentence naming the concrete flaw or strength}}`;
+const ANSWER_SYSTEM="You are an expert engineer. Answer the task directly and completely.";
+
+const S={key:'',models:[],gen:'',judge:'',prices:{}};let scenario=null,last=null,sortBy='quality';
+const store={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const money=x=>x<0.001?'$'+x.toFixed(5):'$'+x.toFixed(4);
+
+// ---- OpenRouter
+async function chat(model,system,user,{temperature=0.2,max_tokens=4096}={}){
+ const t0=performance.now();
+ const r=await fetch('https://openrouter.ai/api/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+S.key},
+  body:JSON.stringify({model,temperature,max_tokens,messages:[{role:'system',content:system},{role:'user',content:user}]})});
+ const d=await r.json().catch(()=>({}));
+ if(!r.ok)throw new Error(`${model}: ${(d.error&&d.error.message)||r.status}`);
+ const ch=d.choices&&d.choices[0];if(!ch)throw new Error(`${model}: empty response`);
+ const u=d.usage||{},p=S.prices[model]||{prompt:0,completion:0};
+ return {text:ch.message.content||'',finish:ch.finish_reason,tin:u.prompt_tokens||0,tout:u.completion_tokens||0,latency:(performance.now()-t0)/1000,
+  cost:(u.prompt_tokens||0)*p.prompt+(u.completion_tokens||0)*p.completion};
+}
+const parseJSON=t=>{const m=t.match(/\{[\s\S]*\}/);if(!m)throw new Error('model returned no JSON');return JSON.parse(m[0])};
+async function pool(jobs,n,onDone){let i=0,done=0;const out=new Array(jobs.length);
+ await Promise.all(Array.from({length:Math.min(n,jobs.length)},async()=>{while(i<jobs.length){const k=i++;out[k]=await jobs[k]();onDone&&onDone(++done)}}));return out}
+
+// ---- setup UI
+function saveSetup(){store.set('mb',JSON.stringify({key:S.key,models:S.models,gen:S.gen,judge:S.judge}))}
+function renderChips(){$('chips').innerHTML=S.models.map((m,i)=>`<span class="tag chip">${esc(m)} <a href="#" data-i="${i}" style="text-decoration:none">✕</a></span>`).join('');
+ $('chips').querySelectorAll('a').forEach(a=>a.onclick=e=>{e.preventDefault();S.models.splice(+a.dataset.i,1);saveSetup();renderChips()});
+ $('setupnote').textContent=(S.key&&S.models.length>=2&&S.gen&&S.judge)?'— ready':'— needs key, ≥2 models, writer and judge'}
+function addModel(){const v=$('addm').value.trim();if(v&&!S.models.includes(v)){S.models.push(v);$('addm').value='';saveSetup();renderChips()}}
+$('addbtn').onclick=addModel;$('addm').onkeydown=e=>{if(e.key==='Enter')addModel()};
+$('key').oninput=()=>{S.key=$('key').value.trim();saveSetup();renderChips()};$('gen').oninput=()=>{S.gen=$('gen').value.trim();saveSetup();renderChips()};$('judge').oninput=()=>{S.judge=$('judge').value.trim();saveSetup();renderChips()};
+(async()=>{
+ try{Object.assign(S,JSON.parse(store.get('mb')||'{}'))}catch(e){}
+ $('key').value=S.key||'';$('gen').value=S.gen||'';$('judge').value=S.judge||'';renderChips();
+ $('ind').innerHTML=Object.keys(INDUSTRIES).map(i=>`<option>${i}</option>`).join('')+'<option value="__custom">Custom industry…</option>';
+ try{const d=await (await fetch('https://openrouter.ai/api/v1/models')).json();
+  for(const m of d.data)S.prices[m.id]={prompt:+m.pricing.prompt||0,completion:+m.pricing.completion||0};
+  $('mlist').innerHTML=d.data.map(m=>`<option value="${esc(m.id)}">`).join('');$('mcount').textContent=`${d.data.length} OpenRouter models available; prices loaded.`}
+ catch(e){$('mcount').textContent='Could not load the OpenRouter model list (offline?). Cost will show $0 until it loads.'}
+})();
+
+// ---- generate
+$('genbtn').onclick=async()=>{
+ if(!S.key||!S.gen){alert('Open Setup: add your OpenRouter key and a test-case writer model.');$('setup').open=true;return}
+ let ind=$('ind').value,focus=$('focus').value.trim(),f=INDUSTRIES[ind]||'',extra='';
+ if(ind==='__custom'){ind=focus||'General software';f='';}else if(focus)extra='Extra steer from the evaluator: '+focus;
+ $('genbtn').disabled=true;$('genbtn').textContent='Generating…';
+ try{const r=await chat(S.gen,GEN_SYSTEM,GEN_PROMPT(ind,f,extra),{temperature:0.7,max_tokens:4000});const d=parseJSON(r.text);
+  const tot=d.rubric.reduce((a,c)=>a+(+c.weight||0),0)||1;d.rubric.forEach(c=>c.weight=(+c.weight||0)/tot);
+  scenario={industry:ind,title:d.title,prompt:d.prompt,rubric:d.rubric};
+  $('scen').style.display='block';$('title').textContent=scenario.title;$('prompt').value=scenario.prompt;
+  $('rubric').innerHTML=scenario.rubric.map(c=>`<div><b>${esc(c.name)}</b> <span class=tag>${Math.round(c.weight*100)}%</span> <span class=mut>${esc(c.description)}</span></div>`).join('')}
+ catch(e){alert(e.message)}$('genbtn').disabled=false;$('genbtn').textContent='Generate test case'};
+
+// ---- run
+const mean=a=>a.reduce((x,y)=>x+y,0)/a.length,median=a=>{const s=[...a].sort((x,y)=>x-y),m=s.length>>1;return s.length%2?s[m]:(s[m-1]+s[m])/2};
+$('runbtn').onclick=async()=>{
+ if(S.models.length<2||!S.judge){alert('Open Setup: add at least 2 models and a judge.');$('setup').open=true;return}
+ scenario.prompt=$('prompt').value;const trials=+$('trials').value;$('runbtn').disabled=true;$('out').innerHTML='';
+ const rubricTxt=scenario.rubric.map(c=>`- ${c.name} (weight ${c.weight.toFixed(2)}): ${c.description}`).join('\n');
+ const jobs=[];for(const m of S.models)for(let t=0;t<trials;t++)jobs.push(async()=>{
+  try{const r=await chat(m,ANSWER_SYSTEM,scenario.prompt);const text=r.finish==='length'?r.text+'\n[TRUNCATED]':r.text;
+   const jr=await chat(S.judge,JUDGE_SYSTEM,JUDGE_PROMPT(scenario.prompt,rubricTxt,text),{temperature:0,max_tokens:1500});const j=parseJSON(jr.text);
+   const sc={};for(const c of scenario.rubric)sc[c.name]=Math.max(1,Math.min(5,parseInt((j.scores||{})[c.name])||1));
+   const q=scenario.rubric.reduce((a,c)=>a+sc[c.name]*c.weight,0)/5*100;
+   return {m,ok:true,q,sc,reasons:j.reasons||{},cost:r.cost,latency:r.latency,tout:r.tout,text}}
+  catch(e){return {m,ok:false,err:e.message}}});
+ const res=await pool(jobs,6,n=>$('status').textContent=`${n}/${jobs.length} attempts done (each is answered, then judged)…`);
+ const rows=S.models.map(m=>{const rs=res.filter(r=>r.m===m),g=rs.filter(r=>r.ok);if(!g.length)return {name:m,quality:null,error:(rs[0]||{}).err};
+  const crit={};for(const c of scenario.rubric)crit[c.name]=mean(g.map(r=>r.sc[c.name]));
+  return {name:m,quality:mean(g.map(r=>r.q)),spread:Math.max(...g.map(r=>r.q))-Math.min(...g.map(r=>r.q)),n:g.length,failed:rs.length-g.length,cost:mean(g.map(r=>r.cost)),latency:median(g.map(r=>r.latency)),tout:mean(g.map(r=>r.tout)),criteria:crit,reasons:g[0].reasons,sample:g[0].text.slice(0,2500)}});
+ const ok=rows.filter(r=>r.quality!==null);
+ for(const a of ok)a.dominated=ok.some(b=>b!==a&&b.quality>=a.quality&&b.cost<=a.cost&&b.latency<=a.latency&&(b.quality>a.quality||b.cost<a.cost||b.latency<a.latency));
+ last={rows,scenario,verdict:verdict(ok),warnings:S.models.includes(S.judge)?['The judge is also a candidate — judges tend to favour their own style. Use a different judge.']:[],trials};
+ $('runbtn').disabled=false;$('status').textContent='';render()};
+
+function verdict(ok){if(!ok.length)return['No model produced a scoreable answer — check the errors below.'];
+ const best=ok.reduce((a,b)=>b.quality>a.quality?b:a),out=[`**${best.name}** scores highest on quality (${best.quality.toFixed(0)}/100).`];
+ const near=ok.filter(r=>r.quality>=best.quality-5&&r.cost<best.cost);
+ if(near.length){const v=near.reduce((a,b)=>b.cost<a.cost?b:a);out.push(`**${v.name}** is within ${(best.quality-v.quality).toFixed(0)} points of ${best.name} at ${(best.cost/Math.max(v.cost,1e-12)).toFixed(1)}× lower cost per run — the best value if that gap is acceptable.`)}
+ const fast=ok.reduce((a,b)=>b.latency<a.latency?b:a);if(fast.name!==best.name)out.push(`Fastest is **${fast.name}** (${fast.latency.toFixed(1)}s vs ${best.latency.toFixed(1)}s) at quality ${fast.quality.toFixed(0)} — worth it for interactive/IDE use, less so for batch agents.`);
+ for(const r of ok)if(r.dominated)out.push(`**${r.name}** is dominated: another model is at least as good on quality, cost and speed.`);
+ out.push("One scenario × few trials is a signal, not a verdict: re-run on the prospect's own tasks and read the judge's reasons before quoting numbers.");return out}
+
+const bar=(v,max,col)=>`<div class=bar><i style="width:${Math.max(3,100*v/max)}%;background:var(${col})"></i></div>`;
+function render(){const rows=last.rows.filter(r=>r.quality!==null),bad=last.rows.filter(r=>r.quality===null);
+ const key={quality:(a,b)=>b.quality-a.quality,cost:(a,b)=>a.cost-b.cost,speed:(a,b)=>a.latency-b.latency}[sortBy];rows.sort(key);
+ const mc=Math.max(...rows.map(r=>r.cost),1e-12),ml=Math.max(...rows.map(r=>r.latency),1e-9),btn=(k,l)=>`<button class="ghost ${sortBy===k?'on':''}" onclick="sortBy='${k}';render()">${l}</button>`;
+ let h=last.warnings.map(w=>`<div class=warn>${w}</div>`).join('');
+ h+=`<h2>3 · Verdict</h2><div class=card><ul style="margin:0;padding-left:18px">${last.verdict.map(v=>`<li>${esc(v).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>')}</li>`).join('')}</ul></div>`;
+ if(rows.length){h+=`<h2>4 · Results</h2><div class=row><span class=mut>Sort by</span>${btn('quality','Quality')}${btn('cost','Cost')}${btn('speed','Speed')}</div><div class="card scroll"><table><tr><th>Model</th><th>Quality /100</th><th>Cost / run</th><th>Speed (median)</th><th>Out tokens</th><th></th></tr>`;
+ for(const r of rows)h+=`<tr><td><b>${esc(r.name)}</b>${r.failed?` <span class="tag bad">${r.failed} failed</span>`:''}</td><td><span class=num>${r.quality.toFixed(0)}</span>${r.n>1?` <span class=mut>±${(r.spread/2).toFixed(0)}</span>`:''}${bar(r.quality,100,'--q')}</td>
+  <td><span class=num>${money(r.cost)}</span>${bar(r.cost,mc,'--c')}</td><td><span class=num>${r.latency.toFixed(1)}s</span>${bar(r.latency,ml,'--s')}</td><td class=num>${Math.round(r.tout)}</td><td>${r.dominated?'<span class="tag bad">dominated</span>':'<span class="tag good">on frontier</span>'}</td></tr>`;
+ h+='</table></div>'}
+ for(const r of bad)h+=`<div class=warn>${esc(r.name)} failed: ${esc(r.error||'unknown error')}</div>`;
+ if(rows.length){const dark=matchMedia('(prefers-color-scheme:dark)').matches;
+ h+='<h2>5 · Why — per rubric criterion</h2><div class="card scroll"><table><tr><th>Criterion</th>'+rows.map(r=>`<th>${esc(r.name)}</th>`).join('')+'</tr>';
+ for(const c of last.scenario.rubric)h+=`<tr><td>${esc(c.name)}</td>`+rows.map(r=>{const v=r.criteria[c.name];return `<td class=num style="background:hsl(${(v-1)/4*120},50%,${dark?'25%':'88%'})">${v.toFixed(1)}</td>`}).join('')+'</tr>';
+ h+='</table></div>';for(const r of rows)h+=`<details><summary>${esc(r.name)}: judge's reasons &amp; sample answer</summary><div class=card>${Object.entries(r.reasons).map(([k,v])=>`<div><b>${esc(k)}</b> — ${esc(v)}</div>`).join('')}<pre>${esc(r.sample)}</pre></div></details>`}
+ $('out').innerHTML=h}
+</script></html>
