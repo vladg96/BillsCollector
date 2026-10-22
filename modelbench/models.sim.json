@@ -1,0 +1,10 @@
+{"models": [
+ {"name": "frontier-large", "price_in": 5.0, "price_out": 25.0,
+  "sim": {"skill": {"default": 0.95, "algorithm": 0.93}, "verbosity": 1.4, "ttft": 1.2, "tps": 60}},
+ {"name": "reasoning-xl", "price_in": 3.0, "price_out": 15.0,
+  "sim": {"skill": {"default": 0.97}, "verbosity": 1.0, "reasoning_tokens": 3500, "ttft": 3.0, "tps": 200}},
+ {"name": "mid-tier", "price_in": 1.0, "price_out": 4.0,
+  "sim": {"skill": {"default": 0.85, "algorithm": 0.6, "context-mgmt": 0.55}, "verbosity": 1.1, "ttft": 0.7, "tps": 110}},
+ {"name": "small-fast", "price_in": 0.15, "price_out": 0.6,
+  "sim": {"skill": {"default": 0.5, "bugfix": 0.9, "config-debug": 0.9, "token-economics": 0.8, "algorithm": 0.25}, "truncate_share": 0.3, "verbosity": 1.0, "ttft": 0.3, "tps": 220}}
+]}

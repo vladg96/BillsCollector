@@ -1,0 +1,66 @@
+[
+  {
+    "id": "moving_avg_offbyone",
+    "category": "bugfix",
+    "prompt": "Fix the bug. Return the full corrected function in a python code block.\n\ndef moving_average(xs, k):\n    # average of each window of k consecutive items\n    return [sum(xs[i:i+k]) / k for i in range(len(xs) - k)]",
+    "tests": "assert moving_average([1,2,3,4], 2) == [1.5, 2.5, 3.5]\nassert moving_average([5], 1) == [5.0]\nassert moving_average([1,2], 3) == []",
+    "reference": "def moving_average(xs, k):\n    return [sum(xs[i:i+k]) / k for i in range(len(xs) - k + 1)]",
+    "broken": "def moving_average(xs, k):\n    return [sum(xs[i:i+k]) / k for i in range(len(xs) - k)]"
+  },
+  {
+    "id": "dedupe_order",
+    "category": "bugfix",
+    "prompt": "Fix the bug (must preserve first-seen order, must not mutate input, must work for unhashable items like lists).\nReturn the full function in a python code block.\n\ndef dedupe(items):\n    return list(set(items))",
+    "tests": "assert dedupe([3,1,3,2,1]) == [3,1,2]\nx=[[1],[2],[1]]; assert dedupe(x) == [[1],[2]] and len(x)==3",
+    "reference": "def dedupe(items):\n    out = []\n    for i in items:\n        if i not in out:\n            out.append(i)\n    return out",
+    "broken": "def dedupe(items):\n    seen = set()\n    return [i for i in items if not (i in seen or seen.add(i))]"
+  },
+  {
+    "id": "merge_intervals",
+    "category": "algorithm",
+    "prompt": "Write `merge_intervals(intervals)` taking a list of [start, end] pairs (unsorted, may touch or overlap; touching intervals merge) and returning merged sorted list of [start, end] lists. Python code block only.",
+    "tests": "assert merge_intervals([[8,10],[1,3],[2,6]]) == [[1,6],[8,10]]\nassert merge_intervals([[1,2],[2,3]]) == [[1,3]]\nassert merge_intervals([]) == []\nassert merge_intervals([[1,10],[2,3]]) == [[1,10]]",
+    "reference": "def merge_intervals(intervals):\n    out = []\n    for s, e in sorted(intervals):\n        if out and s <= out[-1][1]:\n            out[-1][1] = max(out[-1][1], e)\n        else:\n            out.append([s, e])\n    return out",
+    "broken": "def merge_intervals(intervals):\n    out = []\n    for s, e in sorted(intervals):\n        if out and s < out[-1][1]:\n            out[-1][1] = e\n        else:\n            out.append([s, e])\n    return out"
+  },
+  {
+    "id": "lru_cache",
+    "category": "algorithm",
+    "prompt": "Implement class `LRU` with `__init__(capacity)`, `get(key)` (returns None if missing, marks as recently used) and `put(key, value)` (evicts least recently used when over capacity). O(1) operations. Python code block only.",
+    "tests": "c = LRU(2); c.put(1,1); c.put(2,2); assert c.get(1) == 1\nc.put(3,3); assert c.get(2) is None\nc.put(4,4); assert c.get(1) is None and c.get(3) == 3 and c.get(4) == 4\nc.put(3,30); assert c.get(3) == 30",
+    "reference": "from collections import OrderedDict\nclass LRU:\n    def __init__(self, capacity):\n        self.c = capacity; self.d = OrderedDict()\n    def get(self, k):\n        if k not in self.d: return None\n        self.d.move_to_end(k); return self.d[k]\n    def put(self, k, v):\n        self.d[k] = v; self.d.move_to_end(k)\n        if len(self.d) > self.c: self.d.popitem(last=False)",
+    "broken": "from collections import OrderedDict\nclass LRU:\n    def __init__(self, capacity):\n        self.c = capacity; self.d = OrderedDict()\n    def get(self, k):\n        return self.d.get(k)\n    def put(self, k, v):\n        self.d[k] = v\n        if len(self.d) > self.c: self.d.popitem(last=False)"
+  },
+  {
+    "id": "parse_kv",
+    "category": "refactor",
+    "prompt": "Rewrite as a pure function `parse_kv(s)` that behaves identically on valid input but ALSO strips whitespace around keys/values and ignores empty segments (e.g. 'a=1;;b = 2;'). Values stay strings. Python code block only.\n\ndef parse_kv(s):\n    d = {}\n    for part in s.split(';'):\n        k, v = part.split('=')\n        d[k] = v\n    return d",
+    "tests": "assert parse_kv(\"a=1;b=2\") == {\"a\":\"1\",\"b\":\"2\"}\nassert parse_kv(\"a=1;;b = 2;\") == {\"a\":\"1\",\"b\":\"2\"}\nassert parse_kv(\"\") == {}",
+    "reference": "def parse_kv(s):\n    d = {}\n    for part in s.split(';'):\n        if not part.strip(): continue\n        k, v = part.split('=', 1)\n        d[k.strip()] = v.strip()\n    return d",
+    "broken": "def parse_kv(s):\n    d = {}\n    for part in s.split(';'):\n        k, v = part.split('=')\n        d[k.strip()] = v.strip()\n    return d"
+  },
+  {
+    "id": "fix_client_config",
+    "category": "config-debug",
+    "prompt": "A customer's OpenAI-compatible client can't connect. Their config:\n\ncfg = {\"base_url\": \"https://gateway.acme.eu/v1/\", \"api_key\": \"sk-123\", \"headers\": {\"authorization\": \"sk-123\"}, \"model\": \"gpt-4o\"}\n\nGateway docs: base_url must NOT end with '/' ; auth is header `Authorization: Bearer <key>` (exact casing); the api_key field must be removed since the header is used; model must be 'acme-coder-large'.\nWrite `fixed_config()` returning the corrected dict. Python code block only.",
+    "tests": "c = fixed_config()\nassert c[\"base_url\"] == \"https://gateway.acme.eu/v1\"\nassert c[\"headers\"] == {\"Authorization\": \"Bearer sk-123\"}\nassert \"api_key\" not in c and c[\"model\"] == \"acme-coder-large\"",
+    "reference": "def fixed_config():\n    return {'base_url': 'https://gateway.acme.eu/v1', 'headers': {'Authorization': 'Bearer sk-123'}, 'model': 'acme-coder-large'}",
+    "broken": "def fixed_config():\n    return {'base_url': 'https://gateway.acme.eu/v1', 'api_key': 'sk-123', 'headers': {'Authorization': 'sk-123'}, 'model': 'acme-coder-large'}"
+  },
+  {
+    "id": "truncate_context",
+    "category": "context-mgmt",
+    "prompt": "Write `truncate_to_budget(messages, budget, count)`. `messages` is a list of {\"role\",\"content\"}; `count(msg)` returns its token cost. Keep ALL system messages, then keep as many of the NEWEST non-system messages as fit in the remaining budget (contiguous from the end, never skipping a message to fit an older one), preserving original order. Python code block only.",
+    "tests": "cnt = lambda m: len(m[\"content\"])\nms = [{\"role\":\"system\",\"content\":\"sss\"},{\"role\":\"user\",\"content\":\"aaaa\"},{\"role\":\"assistant\",\"content\":\"bb\"},{\"role\":\"user\",\"content\":\"c\"}]\nassert truncate_to_budget(ms, 6, cnt) == [ms[0], ms[2], ms[3]]\nassert truncate_to_budget(ms, 100, cnt) == ms\nassert truncate_to_budget(ms, 3, cnt) == [ms[0]]\nm2 = [{\"role\":\"system\",\"content\":\"s\"},{\"role\":\"user\",\"content\":\"a\"},{\"role\":\"user\",\"content\":\"bbbbb\"}]\nassert truncate_to_budget(m2, 3, cnt) == [m2[0]]",
+    "reference": "def truncate_to_budget(messages, budget, count):\n    sys_ = [m for m in messages if m['role'] == 'system']\n    left = budget - sum(count(m) for m in sys_)\n    keep = set()\n    for i in range(len(messages) - 1, -1, -1):\n        m = messages[i]\n        if m['role'] == 'system': continue\n        if count(m) > left: break\n        left -= count(m); keep.add(i)\n    return [m for i, m in enumerate(messages) if m['role'] == 'system' or i in keep]",
+    "broken": "def truncate_to_budget(messages, budget, count):\n    sys_ = [m for m in messages if m['role'] == 'system']\n    left = budget - sum(count(m) for m in sys_)\n    keep = set()\n    for i in range(len(messages) - 1, -1, -1):\n        m = messages[i]\n        if m['role'] == 'system': continue\n        if count(m) <= left:\n            left -= count(m); keep.add(i)\n    return [m for i, m in enumerate(messages) if m['role'] == 'system' or i in keep]"
+  },
+  {
+    "id": "cost_with_cache",
+    "category": "token-economics",
+    "prompt": "Write `cost_usd(usage, price)`. usage: {\"input\": int, \"cached_input\": int, \"output\": int} where `cached_input` is a SUBSET of `input` (already counted in it). price: per-1M-token dict {\"input\": x, \"cached_input\": y, \"output\": z}. Cached tokens are billed at the cached rate, the remaining input at the normal rate. Return a float. Python code block only.",
+    "tests": "p = {\"input\": 2.0, \"cached_input\": 0.5, \"output\": 10.0}\nassert abs(cost_usd({\"input\": 1_000_000, \"cached_input\": 0, \"output\": 0}, p) - 2.0) < 1e-9\nassert abs(cost_usd({\"input\": 1_000_000, \"cached_input\": 1_000_000, \"output\": 0}, p) - 0.5) < 1e-9\nassert abs(cost_usd({\"input\": 1_000_000, \"cached_input\": 400_000, \"output\": 100_000}, p) - (0.6*2.0 + 0.4*0.5 + 0.1*10.0)) < 1e-9",
+    "reference": "def cost_usd(usage, price):\n    fresh = usage['input'] - usage['cached_input']\n    return (fresh * price['input'] + usage['cached_input'] * price['cached_input'] + usage['output'] * price['output']) / 1e6",
+    "broken": "def cost_usd(usage, price):\n    return (usage['input'] * price['input'] + usage['cached_input'] * price['cached_input'] + usage['output'] * price['output']) / 1e6"
+  }
+]

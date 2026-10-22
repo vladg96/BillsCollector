@@ -1,0 +1,4 @@
+{"models": [
+ {"name": "model-a", "base_url": "https://YOUR-GATEWAY/v1", "api_key_env": "GATEWAY_API_KEY", "model": "model-a-id", "price_in": 3.0, "price_out": 15.0},
+ {"name": "model-b", "base_url": "https://YOUR-GATEWAY/v1", "api_key_env": "GATEWAY_API_KEY", "model": "model-b-id", "price_in": 0.5, "price_out": 2.0}
+]}
