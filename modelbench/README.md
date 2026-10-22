@@ -35,3 +35,12 @@ Each candidate answers; a judge model scores every rubric criterion 1-5 (candida
 a Pareto flag (dominated = another model is at least as good on all three), a plain-English verdict, and per-criterion scores with the judge's reasons.
 
 Caveats: LLM judges favour their own style (use a judge that is not a candidate; the UI warns if it is), and one scenario x few trials is a signal, not a verdict.
+
+## Deploy on Railway (phone access)
+1. Railway -> New Project -> Deploy from GitHub repo -> `vladg96/BillsCollector`, branch `modelbench`. In Settings set **Root Directory** to `modelbench` (it builds the Dockerfile).
+2. Variables:
+   - `APP_PASSWORD` = something only you know (browser asks for it; username can be anything). **Required for live mode.**
+   - Demo: `SIMULATE=1`.
+   - Live: `MODELS_JSON` = contents of your models.json (with generator + judge), plus the API key env var it references (e.g. `GATEWAY_API_KEY`).
+3. Settings -> Networking -> Generate Domain, open it on your phone.
+Railway sets `PORT`; the server then binds 0.0.0.0 and refuses to serve live mode without `APP_PASSWORD`.
