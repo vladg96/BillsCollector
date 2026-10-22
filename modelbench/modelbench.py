@@ -15,11 +15,11 @@ from html import escape
 SYSTEM = "You are a careful senior engineer. Reply with the requested code in a single ```python block and nothing else."
 
 # ---------------------------------------------------------------- model calls
-def call_openai_compat(m, prompt, timeout=120):
+def call_openai_compat(m, prompt, timeout=120, system=SYSTEM):
     url = m["base_url"].rstrip("/") + "/chat/completions"
     body = {"model": m["model"], "temperature": m.get("temperature", 0.2),
             "max_tokens": m.get("max_tokens", 2048),
-            "messages": [{"role": "system", "content": SYSTEM}, {"role": "user", "content": prompt}]}
+            "messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}]}
     headers = {"Content-Type": "application/json"}
     key = os.environ.get(m.get("api_key_env", ""), "")
     if key:

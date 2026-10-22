@@ -1,0 +1,64 @@
+<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>Model Bench</title>
+<style>
+:root{--bg:#fff;--fg:#1a1a1a;--mut:#6b6b6b;--line:#e3e3e3;--card:#f8f8f8;--acc:#5b3df5;--q:#2f9e63;--c:#d98a1b;--s:#2a7de1}
+@media(prefers-color-scheme:dark){:root{--bg:#15171a;--fg:#e8e8e8;--mut:#9a9a9a;--line:#2d3035;--card:#1d2024;--acc:#8f7bff;--q:#46c283;--c:#f0a73d;--s:#5ba2f5}}
+*{box-sizing:border-box}body{font:15px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--fg);max-width:1040px;margin:0 auto;padding:24px 16px 80px}
+h1{margin:0}h2{margin:32px 0 8px;font-size:17px}.mut{color:var(--mut)}.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+select,input,textarea,button{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 12px}
+textarea{width:100%;min-height:140px;line-height:1.45}button{cursor:pointer;background:var(--acc);color:#fff;border:0;font-weight:600}button:disabled{opacity:.5;cursor:wait}
+button.ghost{background:transparent;color:var(--fg);border:1px solid var(--line);font-weight:500}button.ghost.on{border-color:var(--acc);color:var(--acc)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-top:10px}
+.sim{background:#fff3cd;color:#664d03;padding:8px 12px;border-radius:8px;margin:12px 0;font-weight:600}
+.warn{background:#fde7e7;color:#7a1f1f;padding:8px 12px;border-radius:8px;margin:8px 0}
+table{border-collapse:collapse;width:100%}th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}
+.bar{height:8px;border-radius:4px;background:var(--line);overflow:hidden;min-width:110px}.bar>i{display:block;height:100%}
+.num{font-variant-numeric:tabular-nums;font-weight:600}.tag{font-size:12px;padding:2px 8px;border-radius:99px;border:1px solid var(--line);color:var(--mut)}
+.tag.good{border-color:var(--q);color:var(--q)}.tag.bad{border-color:#d34;color:#d34}
+li{margin:6px 0}.scroll{overflow-x:auto}details{margin-top:8px}summary{cursor:pointer;color:var(--mut)}pre{white-space:pre-wrap;font-size:13px;max-height:260px;overflow:auto}
+.err{color:#d34}
+</style>
+<h1>Model Bench</h1><div class=mut>Pick an industry → Claude writes a realistic task and rubric → every model attempts it → judged on quality, cost and speed.</div>
+<div id=simbanner></div>
+<h2>1 · Industry</h2>
+<div class=row><select id=ind></select><input id=focus placeholder="Optional steer, e.g. 'PSD2 refunds' or a custom industry" style="flex:1;min-width:220px">
+<button id=gen>Generate test case</button></div>
+<div id=scen style="display:none">
+ <h2>2 · Test case <span class=mut style="font-weight:400">— editable</span></h2>
+ <div class=card><b id=title></b><textarea id=prompt style="margin-top:8px"></textarea>
+ <div class=mut style="margin-top:8px">Rubric (judge scores each 1–5, weighted):</div><div id=rubric></div></div>
+ <div class=row style="margin-top:12px"><label>Trials per model <select id=trials><option>1</option><option selected>2</option><option>3</option><option>5</option></select></label><button id=run>Run benchmark</button><span id=status class=mut></span></div>
+</div>
+<div id=out></div>
+<script>
+const $=id=>document.getElementById(id);let scenario=null,last=null,sortBy='quality',cfg;
+const api=(p,b)=>fetch(p,b?{method:'POST',body:JSON.stringify(b)}:{}).then(async r=>{const d=await r.json();if(!r.ok)throw new Error(d.error);return d});
+const money=x=>x<0.001?'$'+x.toFixed(5):'$'+x.toFixed(4);
+(async()=>{cfg=await api('/api/config');
+ $('ind').innerHTML=Object.keys(cfg.industries).map(i=>`<option>${i}</option>`).join('')+'<option value="__custom">Custom industry…</option>';
+ if(cfg.simulated)$('simbanner').innerHTML='<div class=sim>SIMULATED — fake models and a fake judge, to demo the UI. Not measurements of real models.</div>'})();
+$('gen').onclick=async()=>{let ind=$('ind').value,focus=$('focus').value;if(ind==='__custom'){ind=focus||'General software';focus=''}
+ $('gen').disabled=true;$('gen').textContent='Generating…';
+ try{scenario=await api('/api/generate',{industry:ind,focus});$('scen').style.display='block';$('title').textContent=scenario.title;$('prompt').value=scenario.prompt;
+  $('rubric').innerHTML=scenario.rubric.map(c=>`<div><b>${c.name}</b> <span class=tag>${Math.round(c.weight*100)}%</span> <span class=mut>${c.description}</span></div>`).join('')}
+ catch(e){alert(e.message)}$('gen').disabled=false;$('gen').textContent='Generate test case'};
+$('run').onclick=async()=>{scenario.prompt=$('prompt').value;$('run').disabled=true;$('status').textContent='Running models and judging… (this can take a minute)';$('out').innerHTML='';
+ try{last=await api('/api/run',{scenario,trials:+$('trials').value});render()}catch(e){$('out').innerHTML=`<div class="warn">${e.message}</div>`}
+ $('run').disabled=false;$('status').textContent=''};
+const bar=(v,max,col,inv)=>`<div class=bar><i style="width:${Math.max(3,100*(inv?1-v/max*.92:v/max))}%;background:var(${col})"></i></div>`;
+function render(){const rows=last.rows.filter(r=>r.quality!==null).slice(),bad=last.rows.filter(r=>r.quality===null);
+ const key={quality:(a,b)=>b.quality-a.quality,cost:(a,b)=>a.cost-b.cost,speed:(a,b)=>a.latency-b.latency}[sortBy];rows.sort(key);
+ const mc=Math.max(...rows.map(r=>r.cost)),ml=Math.max(...rows.map(r=>r.latency));
+ const btn=(k,l)=>`<button class="ghost ${sortBy===k?'on':''}" onclick="sortBy='${k}';render()">${l}</button>`;
+ let h=(last.simulated?'<div class=sim>SIMULATED results</div>':'')+last.warnings.map(w=>`<div class=warn>${w}</div>`).join('');
+ h+=`<h2>3 · Verdict</h2><div class=card><ul style="margin:0;padding-left:18px">${last.verdict.map(v=>`<li>${v.replace(/\*\*(.+?)\*\*/g,'<b>$1</b>')}</li>`).join('')}</ul></div>`;
+ h+=`<h2>4 · Results</h2><div class=row><span class=mut>Sort by</span>${btn('quality','Quality')}${btn('cost','Cost')}${btn('speed','Speed')}</div><div class="card scroll"><table><tr><th>Model</th><th>Quality /100</th><th>Cost / run</th><th>Speed (median)</th><th>Out tokens</th><th></th></tr>`;
+ for(const r of rows)h+=`<tr><td><b>${r.name}</b></td><td><span class=num>${r.quality.toFixed(0)}</span>${r.n>1?` <span class=mut>±${(r.q_spread/2).toFixed(0)}</span>`:''}${bar(r.quality,100,'--q')}</td>
+  <td><span class=num>${money(r.cost)}</span>${bar(r.cost,mc,'--c')}</td><td><span class=num>${r.latency.toFixed(1)}s</span>${bar(r.latency,ml,'--s')}</td><td class=num>${Math.round(r.tout)}</td>
+  <td>${r.dominated?'<span class="tag bad">dominated</span>':'<span class="tag good">on frontier</span>'}</td></tr>`;
+ h+='</table></div>';for(const r of bad)h+=`<div class=warn>${r.name} failed: ${r.error}</div>`;
+ h+='<h2>5 · Why — per rubric criterion</h2><div class="card scroll"><table><tr><th>Criterion</th>'+rows.map(r=>`<th>${r.name}</th>`).join('')+'</tr>';
+ for(const c of last.scenario.rubric)h+=`<tr><td>${c.name}</td>`+rows.map(r=>{const v=r.criteria[c.name];return `<td style="background:hsl(${(v-1)/4*120},50%,${matchMedia('(prefers-color-scheme:dark)').matches?'25%':'88%'})" class=num>${v.toFixed(1)}</td>`}).join('')+'</tr>';
+ h+='</table></div>';
+ for(const r of rows)h+=`<details><summary>${r.name}: judge's reasons &amp; sample answer</summary><div class=card>${Object.entries(r.reasons).map(([k,v])=>`<div><b>${k}</b> — ${v}</div>`).join('')}<pre>${r.sample.replace(/</g,'&lt;')}</pre></div></details>`;
+ $('out').innerHTML=h}
+</script>
